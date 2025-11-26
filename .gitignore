@@ -50,3 +50,6 @@ pnpm-debug.log*
 
 # Docker
 docker-compose.override.yml
+
+# Firebase service account
+firebase-adminsdk-*.json
