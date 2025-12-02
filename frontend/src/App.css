@@ -184,3 +184,38 @@
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.40 0.13 15);
 }
+
+/* Premium Header Blocks */
+.premium-header-block {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.premium-header-block::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, transparent 0%, oklch(1 0 0 / 0.05) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.premium-header-block:hover::before {
+  opacity: 1;
+}
+
+.premium-header-block:hover {
+  transform: translateY(-4px);
+}
+
+/* Line clamp utilities */
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}

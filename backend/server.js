@@ -1,181 +1,333 @@
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import morgan from 'morgan';
-import rateLimit from 'express-rate-limit';
-import dotenv from 'dotenv';
-import pg from 'pg';
+// backend/server.js
+// Express.js backend with Firebase authentication
 
-// Load environment variables
-dotenv.config();
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const admin = require('firebase-admin');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Database connection pool
-const pool = new pg.Pool({
-  host: process.env.DB_HOST || 'localhost',
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  })
+});
+
+// PostgreSQL connection
+const pool = new Pool({
+  host: process.env.DB_HOST || 'postgres',
   port: process.env.DB_PORT || 5432,
   database: process.env.DB_NAME || 'premium_butcher',
-  user: process.env.DB_USER || 'postgres',
+  user: process.env.DB_USER || 'butcher_user',
   password: process.env.DB_PASSWORD,
-  ssl: process.env.DB_SSL === 'true' ? {
-    rejectUnauthorized: false
-  } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
 });
 
 // Test database connection
-pool.query('SELECT NOW()', (err, res) => {
+pool.connect((err, client, release) => {
   if (err) {
-    console.error('❌ Database connection failed:', err.message);
+    console.error('❌ Database connection error:', err);
   } else {
-    console.log('✅ Database connected successfully at', res.rows[0].now);
+    console.log(`✅ Database connected at: ${new Date().toISOString()}`);
+    release();
   }
 });
 
-// Middleware
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-  hsts: {
-    maxAge: 31536000,
-    includeSubDomains: true,
-    preload: true
-  },
-}));
+// ============================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================
 
-app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-  credentials: true
-}));
+const authenticateUser = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
 
-app.use(compression());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('combined'));
+    const idToken = authHeader.split('Bearer ')[1];
+    
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    
+    // Attach user info to request
+    req.user = {
+      firebaseUid: decodedToken.uid,
+      email: decodedToken.email,
+      name: decodedToken.name,
+      picture: decodedToken.picture,
+    };
+    
+    next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use('/api/', limiter);
-
-// Stricter rate limit for authentication
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  skipSuccessfulRequests: true,
-  message: 'Too many login attempts, please try again later.'
-});
-
-// ============================================================================
-// API ROUTES
-// ============================================================================
+// ============================================
+// PUBLIC ENDPOINTS (No auth required)
+// ============================================
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
+  res.json({
+    status: 'ok',
     timestamp: new Date().toISOString(),
-    database: pool.totalCount > 0 ? 'connected' : 'disconnected'
+    database: pool.totalCount > 0 ? 'connected' : 'disconnected',
+    firebase: 'initialized'
   });
 });
 
-// Get customer profile
-app.get('/api/customers/:customerId', async (req, res) => {
+// ============================================
+// PROTECTED ENDPOINTS (Auth required)
+// ============================================
+
+// Get current user's profile
+app.get('/api/profile', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
-    
-    const result = await pool.query(
-      'SELECT * FROM customer_summary WHERE customer_id = $1',
-      [customerId]
+    // First, try to find by firebase_uid
+    let result = await pool.query(
+      'SELECT * FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
     );
+
+    if (result.rows.length === 0) {
+      // No profile with this firebase_uid, check if email exists
+      const emailCheck = await pool.query(
+        'SELECT * FROM customers WHERE email = $1',
+        [req.user.email]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        // Profile exists with this email but different firebase_uid
+        // Update the firebase_uid to link this auth method
+        result = await pool.query(
+          'UPDATE customers SET firebase_uid = $1 WHERE email = $2 RETURNING *',
+          [req.user.firebaseUid, req.user.email]
+        );
+        return res.json(result.rows[0]);
+      }
+
+      // No profile exists at all - create new one
+      const newProfile = await pool.query(
+        `INSERT INTO customers (firebase_uid, email, name, member_since)
+         VALUES ($1, $2, $3, NOW())
+         RETURNING *`,
+        [req.user.firebaseUid, req.user.email, req.user.name]
+      );
+      return res.json(newProfile.rows[0]);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update current user's profile
+app.put('/api/profile', authenticateUser, async (req, res) => {
+  try {
+    const updates = req.body;
+    
+    // Remove fields that shouldn't be updated
+    delete updates.id;
+    delete updates.firebase_uid;
+    delete updates.member_since;
+    delete updates.created_at;
+    delete updates.updated_at;
+    
+    // Build dynamic UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(req.user.firebaseUid);
+    
+    const query = `
+      UPDATE customers 
+      SET ${setClause}, updated_at = NOW()
+      WHERE firebase_uid = $${values.length}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Customer not found' });
+      return res.status(404).json({ error: 'Profile not found' });
     }
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching customer:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
   }
 });
 
-// Get customer addresses
-app.get('/api/customers/:customerId/addresses', async (req, res) => {
+// Get current user's family members
+app.get('/api/profile/family', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
+    // First get customer ID from firebase_uid
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+    
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const customerId = customerResult.rows[0].id;
     
     const result = await pool.query(
-      'SELECT * FROM addresses WHERE customer_id = $1 AND is_active = true ORDER BY is_default DESC',
+      'SELECT * FROM family_members WHERE customer_id = $1 ORDER BY id',
       [customerId]
     );
     
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching addresses:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching family members:', error);
+    res.status(500).json({ error: 'Failed to fetch family members' });
   }
 });
 
-// Get customer preferences
-app.get('/api/customers/:customerId/preferences', async (req, res) => {
+// Add family member
+app.post('/api/profile/family', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
+    const { name, relationship, age, dietary_requirements } = req.body;
+    
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+    
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer profile not found' });
+    }
+    
+    const customerId = customerResult.rows[0].id;
     
     const result = await pool.query(
-      'SELECT * FROM preferences WHERE customer_id = $1',
-      [customerId]
+      `INSERT INTO family_members (customer_id, name, relationship, age, dietary_requirements)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING *`,
+      [customerId, name, relationship, age, dietary_requirements]
+    );
+    
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding family member:', error);
+    res.status(500).json({ error: 'Failed to add family member' });
+  }
+});
+
+// Update family member
+app.put('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    const updates = req.body;
+    
+    // Verify this family member belongs to the authenticated user
+    const verifyResult = await pool.query(
+      `SELECT fm.* FROM family_members fm
+       JOIN customers c ON fm.customer_id = c.id
+       WHERE fm.id = $1 AND c.firebase_uid = $2`,
+      [memberId, req.user.firebaseUid]
+    );
+    
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Family member not found' });
+    }
+    
+    // Build UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(memberId);
+    
+    const query = `
+      UPDATE family_members 
+      SET ${setClause}
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating family member:', error);
+    res.status(500).json({ error: 'Failed to update family member' });
+  }
+});
+
+// Delete family member
+app.delete('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    
+    // Verify and delete
+    const result = await pool.query(
+      `DELETE FROM family_members fm
+       USING customers c
+       WHERE fm.customer_id = c.id 
+       AND fm.id = $1 
+       AND c.firebase_uid = $2
+       RETURNING fm.*`,
+      [memberId, req.user.firebaseUid]
     );
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Preferences not found' });
+      return res.status(404).json({ error: 'Family member not found' });
     }
     
-    res.json(result.rows[0]);
+    res.json({ message: 'Family member deleted', member: result.rows[0] });
   } catch (error) {
-    console.error('Error fetching preferences:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error deleting family member:', error);
+    res.status(500).json({ error: 'Failed to delete family member' });
   }
 });
 
-// Get customer orders
-app.get('/api/customers/:customerId/orders', async (req, res) => {
+// Get current user's orders
+app.get('/api/profile/orders', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
     const { limit = 10, offset = 0 } = req.query;
     
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+    
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const customerId = customerResult.rows[0].id;
+    
     const result = await pool.query(
-      `SELECT o.*, 
-        json_agg(
-          json_build_object(
-            'product_name', oi.product_name,
-            'quantity', oi.quantity,
-            'unit_price', oi.unit_price,
-            'line_total', oi.line_total
-          )
-        ) as items
-       FROM orders o
-       LEFT JOIN order_items oi ON o.order_id = oi.order_id
-       WHERE o.customer_id = $1
-       GROUP BY o.order_id
-       ORDER BY o.order_date DESC
+      `SELECT * FROM orders 
+       WHERE customer_id = $1 
+       ORDER BY order_date DESC 
        LIMIT $2 OFFSET $3`,
       [customerId, limit, offset]
     );
@@ -183,180 +335,246 @@ app.get('/api/customers/:customerId/orders', async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching orders:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
 
-// Get family members (B2C)
-app.get('/api/customers/:customerId/family-members', async (req, res) => {
+// Get current user's subscriptions
+app.get('/api/profile/subscriptions', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+    
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+    
+    const customerId = customerResult.rows[0].id;
     
     const result = await pool.query(
-      'SELECT * FROM family_members WHERE customer_id = $1',
+      'SELECT * FROM subscriptions WHERE customer_id = $1 ORDER BY id',
       [customerId]
     );
     
     res.json(result.rows);
   } catch (error) {
-    console.error('Error fetching family members:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching subscriptions:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriptions' });
   }
 });
 
-// Get departments (B2B)
-app.get('/api/customers/:customerId/departments', async (req, res) => {
+// Update subscription
+app.put('/api/profile/subscriptions/:subscriptionId', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
+    const { subscriptionId } = req.params;
+    const updates = req.body;
     
-    const result = await pool.query(
-      'SELECT * FROM departments WHERE customer_id = $1 AND is_active = true ORDER BY location_name',
-      [customerId]
+    // Verify subscription belongs to user
+    const verifyResult = await pool.query(
+      `SELECT s.* FROM subscriptions s
+       JOIN customers c ON s.customer_id = c.id
+       WHERE s.id = $1 AND c.firebase_uid = $2`,
+      [subscriptionId, req.user.firebaseUid]
     );
     
-    res.json(result.rows);
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+    
+    // Build UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+    
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(subscriptionId);
+    
+    const query = `
+      UPDATE subscriptions 
+      SET ${setClause}
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+    
+    const result = await pool.query(query, values);
+    res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching departments:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error updating subscription:', error);
+    res.status(500).json({ error: 'Failed to update subscription' });
   }
 });
 
-// Get contact persons (B2B)
-app.get('/api/customers/:customerId/contacts', async (req, res) => {
-  try {
-    const { customerId } = req.params;
-    
-    const result = await pool.query(
-      'SELECT * FROM contact_persons WHERE customer_id = $1 AND is_active = true ORDER BY full_name',
-      [customerId]
-    );
-    
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching contacts:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// ============================================
 
-// Get invoices (B2B)
-app.get('/api/customers/:customerId/invoices', async (req, res) => {
-  try {
-    const { customerId } = req.params;
-    const { limit = 10, offset = 0 } = req.query;
-    
-    const result = await pool.query(
-      `SELECT * FROM invoices 
-       WHERE customer_id = $1 
-       ORDER BY invoice_date DESC 
-       LIMIT $2 OFFSET $3`,
-      [customerId, limit, offset]
-    );
-    
-    res.json(result.rows);
-  } catch (error) {
-    console.error('Error fetching invoices:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
+// ============================================
+// HEADER BLOCKS ENDPOINTS (Auth required)
+// ============================================
 
-// Get loyalty points (B2C)
-app.get('/api/customers/:customerId/loyalty-points', async (req, res) => {
+// Get customer loyalty points for header
+app.get('/api/header/loyalty-points', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
-    
-    const result = await pool.query(
-      `SELECT * FROM loyalty_points 
-       WHERE customer_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT 50`,
-      [customerId]
+    const customerResult = await pool.query(
+      'SELECT loyalty_points FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
     );
     
-    // Calculate current balance
-    const balance = result.rows.length > 0 ? result.rows[0].balance_after : 0;
+    if (customerResult.rows.length === 0) {
+      return res.json({ points: 0 });
+    }
     
-    res.json({
-      balance,
-      transactions: result.rows
-    });
+    res.json({ points: customerResult.rows[0].loyalty_points || 0 });
   } catch (error) {
     console.error('Error fetching loyalty points:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ error: 'Failed to fetch loyalty points' });
   }
 });
 
-// Get sustainability metrics
-app.get('/api/customers/:customerId/sustainability', async (req, res) => {
+// Get available loyalty rewards for header
+app.get('/api/header/rewards', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
-    
     const result = await pool.query(
-      `SELECT * FROM sustainability_metrics 
-       WHERE customer_id = $1 
-       ORDER BY metric_date DESC 
-       LIMIT 1`,
-      [customerId]
+      `SELECT id, name, description, points_required, icon 
+       FROM loyalty_rewards 
+       WHERE is_available = true 
+       ORDER BY points_required ASC 
+       LIMIT 5`
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching rewards:', error);
+    res.status(500).json({ error: 'Failed to fetch rewards' });
+  }
+});
+
+// Get random tip of the day for header
+app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, title, content, tip_type, icon 
+       FROM tips 
+       WHERE is_active = true 
+       ORDER BY RANDOM() 
+       LIMIT 1`
     );
     
     if (result.rows.length === 0) {
       return res.json({
-        local_sourcing_percentage: 0,
-        carbon_saved_kg: 0,
-        partner_farms_count: 0,
-        organic_percentage: 0
+        title: 'Welcome!',
+        content: 'Check back soon for tips and recommendations',
+        tip_type: 'general',
+        icon: 'info'
       });
     }
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching sustainability metrics:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching tip:', error);
+    res.status(500).json({ error: 'Failed to fetch tip' });
   }
 });
 
-// Get B2B dashboard
-app.get('/api/customers/:customerId/b2b-dashboard', async (req, res) => {
+// Get next upcoming event for header
+app.get('/api/header/next-event', authenticateUser, async (req, res) => {
   try {
-    const { customerId } = req.params;
-    
     const result = await pool.query(
-      'SELECT * FROM b2b_customer_dashboard WHERE customer_id = $1',
-      [customerId]
+      `SELECT id, title, description, event_date, event_type, icon 
+       FROM events 
+       WHERE is_active = true AND event_date >= CURRENT_DATE 
+       ORDER BY event_date ASC 
+       LIMIT 1`
     );
     
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'B2B customer not found' });
+      return res.json({
+        title: 'No upcoming events',
+        description: 'Stay tuned for future events',
+        event_date: null,
+        event_type: 'general',
+        icon: 'calendar'
+      });
     }
     
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching B2B dashboard:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error fetching event:', error);
+    res.status(500).json({ error: 'Failed to fetch event' });
   }
 });
 
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ error: 'Not found' });
+// Get sustainability impact
+app.get('/api/sustainability', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json({
+        co2_saved_kg: 0,
+        local_sourcing_percentage: 0,
+        partner_farms_count: 0,
+        sustainability_score: 0
+      });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      'SELECT co2_saved_kg, local_sourcing_percentage, partner_farms_count, sustainability_score FROM sustainability_impact WHERE customer_id = $1',
+      [customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        co2_saved_kg: 0,
+        local_sourcing_percentage: 0,
+        partner_farms_count: 0,
+        sustainability_score: 0
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching sustainability:', error);
+    res.status(500).json({ error: 'Failed to fetch sustainability data' });
+  }
 });
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error' });
+
+// START SERVER
+// ============================================
+
+app.listen(PORT, () => {
+  console.log(`
+🚀 Premium Butcher Backend API (with Firebase Auth)
+================================
+📡 Server running on port ${PORT}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🗄️  Database: ${process.env.DB_NAME}
+🔐 Firebase Auth: Enabled
+
+Protected endpoints (require Authorization header):
+  GET  /api/profile
+  PUT  /api/profile
+  GET  /api/profile/family
+  POST /api/profile/family
+  PUT  /api/profile/family/:memberId
+  DEL  /api/profile/family/:memberId
+  GET  /api/profile/orders
+  GET  /api/profile/subscriptions
+  PUT  /api/profile/subscriptions/:subscriptionId
+
+Public endpoints:
+  GET  /health
+`);
 });
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM signal received: closing HTTP server');
-  pool.end(() => {
-    console.log('Database pool closed');
-    process.exit(0);
-  });
-});

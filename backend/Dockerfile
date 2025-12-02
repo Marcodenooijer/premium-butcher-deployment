@@ -1,33 +1,21 @@
-# Node.js backend Dockerfile
+# Use Node.js 20 (LTS) for Firebase Admin SDK compatibility
 FROM node:20-alpine
 
-# Create app directory
+# Set working directory
 WORKDIR /app
 
-# Install app dependencies
+# Copy package files
 COPY package*.json ./
 
+# Install dependencies
 RUN npm install --production
 
-# Copy app source
+# Copy application code
 COPY . .
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Change ownership
-RUN chown -R nodejs:nodejs /app
-
-# Switch to non-root user
-USER nodejs
 
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
-
-# Start the application
+# Start server
 CMD ["node", "server.js"]
+

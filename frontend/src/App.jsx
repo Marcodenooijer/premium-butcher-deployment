@@ -1,191 +1,352 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button.jsx'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card.jsx'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs.jsx'
-import { Input } from '@/components/ui/input.jsx'
-import { Label } from '@/components/ui/label.jsx'
-import { Textarea } from '@/components/ui/textarea.jsx'
-import { Switch } from '@/components/ui/switch.jsx'
-import { Badge } from '@/components/ui/badge.jsx'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar.jsx'
+import { useState, useEffect } from 'react';
+import api from './services/api';
+import { useAuth } from './contexts/AuthContext';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "./components/ui/switch";
 import { 
-  User, MapPin, Heart, ShoppingBag, Award, Bell, 
-  Download, Edit, Save, X, ChefHat, Leaf, 
-  Calendar, MessageSquare, Star, TrendingUp, Package,
-  CreditCard, Settings, Shield, Users, BookOpen
-} from 'lucide-react'
-import './App.css'
+  User, 
+  Heart, 
+  ShoppingBag, 
+  Settings, 
+  Award,
+  Edit2,
+  Save,
+  Download,
+  Globe,
+  Mail,
+  Phone,
+  MapPin,
+  Calendar,
+  TrendingUp,
+  Package,
+  Leaf,
+  Star,
+  Gift,
+  Bell,
+  CreditCard,
+  Truck,
+  Users,
+  ChefHat,
+  Flame,
+  LogOut,
+  Plus,
+  Trash2,
+  X
+} from 'lucide-react';
+import './App.css';
 
+import PremiumHeaderBlocks from './components/PremiumHeaderBlocks';
+import MeatPreferences from './components/MeatPreferences';
+import CulinaryProfile from './components/CulinaryProfile';
 function App() {
-  const [isEditing, setIsEditing] = useState(false)
-  const [activeTab, setActiveTab] = useState('overview')
+  const { logout } = useAuth();
+  // Get customer ID from URL parameter or default to 1
   
-  // Mock customer data
-  const [customerData, setCustomerData] = useState({
-    name: 'Jan de Vries',
-    email: 'jan.devries@email.nl',
-    phone: '+31 6 1234 5678',
-    dateOfBirth: '1985-03-15',
-    language: 'nl',
-    profilePhoto: null,
-    
-    // Addresses
-    primaryAddress: {
-      street: 'Prinsengracht 123',
-      city: 'Amsterdam',
-      postalCode: '1015 DL',
-      country: 'Nederland'
-    },
-    
-    // Meat preferences
-    favoriteMeats: ['Beef', 'Lamb', 'Poultry'],
-    preferredCuts: ['Ribeye', 'Tenderloin', 'Shoulder'],
-    cookingPreference: 'Medium-rare',
-    householdSize: 4,
-    weeklyConsumption: '2-3 times',
-    organicOnly: true,
-    grassFedPreference: true,
-    localSourcing: true,
-    
-    // Family members (when household size > 1)
-    familyMembers: [
-      { id: 1, gender: 'Female', age: 38, dietaryRequirements: 'None' },
-      { id: 2, gender: 'Male', age: 12, dietaryRequirements: 'No spicy food' },
-      { id: 3, gender: 'Female', age: 9, dietaryRequirements: 'Vegetarian options preferred' }
-    ],
-    
-    // Culinary profile
-    cookingSkill: 'Intermediate',
-    favoriteCuisines: ['Dutch', 'French', 'BBQ'],
-    equipment: ['Grill', 'Oven', 'Smoker'],
-    
-    // Loyalty
-    loyaltyPoints: 2450,
-    membershipTier: 'Gold',
-    lifetimeValue: 3250,
-    
-    // Subscription
-    hasSubscription: true,
-    deliveryFrequency: 'Bi-weekly',
-    preferredDeliveryDay: 'Saturday',
-    
-    // Communication
-    emailNotifications: true,
-    smsNotifications: false,
-    newsletter: true,
-    recipeEmails: true
-  })
+  // State management
+  const [customerData, setCustomerData] = useState(null);
+  const [sustainabilityData, setSustainabilityData] = useState(null);
+  const [familyMembers, setFamilyMembers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
+  const [editingMember, setEditingMember] = useState(null);
+  const [newMember, setNewMember] = useState({ name: '', relationship: '', age: '', gender: '', dietary_requirements: '' });
+  
+  // Load data from API on component mount
+  useEffect(() => {
+    loadAllData();
+  }, []);
+  
+  const loadAllData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Fetch all data in parallel
+      const [customer, family, customerOrders, customerSubscriptions, sustainability] = await Promise.all([
+        api.getProfile(),
+        api.getFamilyMembers(),
+        api.getOrders({ limit: 10 }),
+        api.getSubscriptions(),
+        api.getSustainability(),
+      ]);
+      
+      setCustomerData(customer);
+      setFamilyMembers(family);
+      setOrders(customerOrders);
+      setSubscriptions(customerSubscriptions);
+      setSustainabilityData(sustainability);
+      
+    } catch (err) {
+      console.error('Error loading data:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      
+      // Update customer profile via API
+      const updatedCustomer = await api.updateProfile(customerData);
+      setCustomerData(updatedCustomer);
+      
+      setIsEditing(false);
+      alert('✅ Profile updated successfully!');
+      
+    } catch (err) {
+      console.error('Error saving:', err);
+      alert(`❌ Failed to save changes: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const handleSave = () => {
-    setIsEditing(false)
-    // Here you would typically save to backend/Shopify API
-    console.log('Saving customer data:', customerData)
+  const handleDownload = () => {
+    const dataStr = JSON.stringify(customerData, null, 2);
+    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(dataBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `customer-profile-${customerData.name.replace(/\s+/g, '-').toLowerCase()}.json`;
+    link.click();
+  };
+
+
+  // Logout handler
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  // Add family member handler
+  const handleAddFamilyMember = async () => {
+    try {
+      const memberData = {
+        ...newMember,
+        age: parseInt(newMember.age),
+        dietary_requirements: newMember.dietary_requirements ? newMember.dietary_requirements.split(",").map(r => r.trim()) : []
+      };
+      
+      await api.addFamilyMember(memberData);
+      await loadAllData();
+      setShowAddFamilyModal(false);
+      setNewMember({ name: "", relationship: "", age: "", gender: "", dietary_requirements: "" });
+    } catch (error) {
+      console.error("Error adding family member:", error);
+      alert("Failed to add family member");
+    }
+  };
+
+  // Delete family member handler
+  const handleDeleteFamilyMember = async (memberId) => {
+    if (!confirm("Are you sure you want to remove this family member?")) return;
+    
+    try {
+      await api.deleteFamilyMember(memberId);
+      await loadAllData();
+    } catch (error) {
+      console.error("Error deleting family member:", error);
+      alert("Failed to delete family member");
+    }
+  };
+  const getLoyaltyColor = (tier) => {
+    const colors = {
+      'Bronze': 'bg-orange-100 text-orange-800',
+      'Silver': 'bg-gray-100 text-gray-800',
+      'Gold': 'bg-yellow-100 text-yellow-800',
+      'Platinum': 'bg-purple-100 text-purple-800'
+    };
+    return colors[tier] || 'bg-gray-100 text-gray-800';
+  };
+
+  const getStatusColor = (status) => {
+    const colors = {
+      'Delivered': 'bg-green-100 text-green-800',
+      'Processing': 'bg-blue-100 text-blue-800',
+      'Pending': 'bg-yellow-100 text-yellow-800',
+      'Cancelled': 'bg-red-100 text-red-800'
+    };
+    return colors[status] || 'bg-gray-100 text-gray-800';
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleDateString('nl-NL', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  const formatCurrency = (amount) => {
+    if (!amount && amount !== 0) return 'N/A';
+    return new Intl.NumberFormat('nl-NL', {
+      style: 'currency',
+      currency: 'EUR'
+    }).format(amount);
+  };
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-[oklch(0.35_0.12_15)] mx-auto mb-4"></div>
+          <p className="text-lg text-gray-600">Loading your profile...</p>
+        </div>
+      </div>
+    );
   }
-
-  const handleDownload = (format) => {
-    // Mock download functionality
-    const data = JSON.stringify(customerData, null, 2)
-    const blob = new Blob([data], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `profile-data.${format}`
-    a.click()
+  
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md p-8 bg-white rounded-lg shadow-lg">
+          <div className="text-red-500 text-5xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Error Loading Profile</h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={loadAllData}
+            className="px-6 py-3 bg-[oklch(0.35_0.12_15)] text-white rounded-lg hover:bg-[oklch(0.30_0.12_15)] transition-colors"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+  
+  // Show "no data" state
+  if (!customerData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md p-8 bg-white rounded-lg shadow-lg">
+          <div className="text-gray-400 text-5xl mb-4">👤</div>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Customer Not Found</h2>
+          <p className="text-gray-600 mb-4">No customer data available</p>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="premium-gradient text-white shadow-lg sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="text-2xl font-bold">🥩 Premium Biological Butcher</div>
-            </div>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" className="text-white hover:bg-white/20">
-                <Bell className="w-5 h-5" />
-              </Button>
-              <Button variant="ghost" className="text-white hover:bg-white/20">
-                <ShoppingBag className="w-5 h-5" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="container mx-auto px-4 py-8">
-        {/* Profile Header Card */}
-        <Card className="mb-8 premium-card border-2">
-          <CardContent className="pt-6">
-            <div className="flex flex-col md:flex-row items-start md:items-center gap-6">
-              <Avatar className="w-24 h-24 border-4 border-primary">
-                <AvatarImage src={customerData.profilePhoto} />
-                <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
-                  {customerData.name.split(' ').map(n => n[0]).join('')}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-2">
-                  <h1 className="text-3xl font-bold">{customerData.name}</h1>
-                  <Badge className="gold-shimmer text-foreground border-0">
-                    <Award className="w-4 h-4 mr-1" />
-                    {customerData.membershipTier} Member
-                  </Badge>
-                </div>
-                <p className="text-muted-foreground mb-4">{customerData.email}</p>
-                
-                <div className="flex flex-wrap gap-4">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="w-4 h-4 text-primary" />
-                    <span className="text-sm">{customerData.loyaltyPoints} Points</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Package className="w-4 h-4 text-primary" />
-                    <span className="text-sm">€{customerData.lifetimeValue} Lifetime Value</span>
-                  </div>
-                  {customerData.hasSubscription && (
-                    <div className="flex items-center gap-2">
-                      <Calendar className="w-4 h-4 text-primary" />
-                      <span className="text-sm">{customerData.deliveryFrequency} Delivery</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              
-              <div className="flex gap-2">
-                {!isEditing ? (
-                  <>
-                    <Button onClick={() => setIsEditing(true)} className="bg-primary hover:bg-primary/90">
-                      <Edit className="w-4 h-4 mr-2" />
-                      Edit Profile
-                    </Button>
-                    <Button variant="outline" onClick={() => handleDownload('json')}>
-                      <Download className="w-4 h-4 mr-2" />
-                      Download
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Button onClick={handleSave} className="bg-primary hover:bg-primary/90">
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Changes
-                    </Button>
-                    <Button variant="outline" onClick={() => setIsEditing(false)}>
-                      <X className="w-4 h-4 mr-2" />
-                      Cancel
-                    </Button>
-                  </>
+      <div className="bg-gradient-to-br from-[oklch(0.35_0.12_15)] via-[oklch(0.38_0.14_20)] to-[oklch(0.42_0.10_10)] relative overflow-hidden text-white">
+        {/* Premium decorative overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/10 pointer-events-none"></div>
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.08) 0%, transparent 50%)'}}></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{customerData.name}</h1>
+              <div className="flex items-center gap-4 text-white/90">
+                <span className="flex items-center gap-1">
+                  <Mail className="w-4 h-4" />
+                  {customerData.email}
+                </span>
+                {customerData.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-4 h-4" />
+                    {customerData.phone}
+                  </span>
                 )}
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex gap-2">
+              {isEditing ? (
+                <>
+                  <Button 
+                    onClick={() => setIsEditing(false)} 
+                    variant="outline"
+                    disabled={saving}
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                  >
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[oklch(0.35_0.12_15)] mr-2"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-2" />
+                        Save Changes
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    onClick={() => window.open('https://www.biologischvleeschatelier.nl/', '_blank' )}
+                    className="bg-green-600 hover:bg-green-700 text-white border-0"
+                  >
+                    <Globe className="w-4 h-4 mr-2" />
+                    Visit Website
+                  </Button>
+                  <Button 
+                    onClick={handleDownload}
+                    variant="outline"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button 
+                    onClick={() => setIsEditing(true)}
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90"
+                  >
+                    <Edit2 className="w-4 h-4 mr-2" />
+                    Edit Profile
+                  </Button>
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                  >
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </Button>
+                </>
+              )}
 
-        {/* Main Content Tabs */}
+            </div>
+          </div>
+
+          {/* Premium Header Blocks */}
+          <PremiumHeaderBlocks />
+          
+        </div>
+      </div>
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2 h-auto p-2 bg-card">
+          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
@@ -197,10 +358,6 @@ function App() {
             <TabsTrigger value="orders" className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4" />
               <span className="hidden sm:inline">Orders</span>
-            </TabsTrigger>
-            <TabsTrigger value="subscription" className="flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              <span className="hidden sm:inline">Subscription</span>
             </TabsTrigger>
             <TabsTrigger value="loyalty" className="flex items-center gap-2">
               <Award className="w-4 h-4" />
@@ -214,559 +371,349 @@ function App() {
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card className="premium-card">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Personal Information */}
+              <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
-                    <User className="w-5 h-5 text-primary" />
+                    <User className="w-5 h-5" />
                     Personal Information
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div>
-                    <Label>Full Name</Label>
-                    <Input 
-                      value={customerData.name} 
-                      disabled={!isEditing}
-                      onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Email Address</Label>
-                    <Input 
-                      type="email"
-                      value={customerData.email} 
-                      disabled={!isEditing}
-                      onChange={(e) => setCustomerData({...customerData, email: e.target.value})}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Phone Number</Label>
-                    <Input 
-                      value={customerData.phone} 
-                      disabled={!isEditing}
-                      onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Date of Birth</Label>
-                    <Input 
-                      type="date"
-                      value={customerData.dateOfBirth} 
-                      disabled={!isEditing}
-                      onChange={(e) => setCustomerData({...customerData, dateOfBirth: e.target.value})}
-                      className="mt-1"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="premium-card">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-primary" />
-                    Primary Address
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>Street Address</Label>
-                    <Input 
-                      value={customerData.primaryAddress.street} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label>Postal Code</Label>
-                      <Input 
-                        value={customerData.primaryAddress.postalCode} 
-                        disabled={!isEditing}
-                        className="mt-1"
-                      />
+                      <Label htmlFor="name">Full Name</Label>
+                      {isEditing ? (
+                        <Input
+                          id="name"
+                          value={customerData.name || ''}
+                          onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.name}</p>
+                      )}
                     </div>
                     <div>
-                      <Label>City</Label>
-                      <Input 
-                        value={customerData.primaryAddress.city} 
-                        disabled={!isEditing}
+                      <Label htmlFor="email">Email</Label>
+                      {isEditing ? (
+                        <Input
+                          id="email"
+                          type="email"
+                          value={customerData.email || ''}
+                          onChange={(e) => setCustomerData({...customerData, email: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.email}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="phone">Phone</Label>
+                      {isEditing ? (
+                        <Input
+                          id="phone"
+                          value={customerData.phone || ''}
+                          onChange={(e) => setCustomerData({...customerData, phone: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.phone || 'Not provided'}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="date_of_birth">Date of Birth</Label>
+                      {isEditing ? (
+                        <Input
+                          id="date_of_birth"
+                          type="date"
+                          value={customerData.date_of_birth || ''}
+                          onChange={(e) => setCustomerData({...customerData, date_of_birth: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{formatDate(customerData.date_of_birth)}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="address">Address</Label>
+                    {isEditing ? (
+                      <Input
+                        id="address"
+                        value={customerData.address || ''}
+                        onChange={(e) => setCustomerData({...customerData, address: e.target.value})}
                         className="mt-1"
                       />
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Country</Label>
-                    <Input 
-                      value={customerData.primaryAddress.country} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="premium-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Leaf className="w-5 h-5 text-primary" />
-                  Sustainability Impact
-                </CardTitle>
-                <CardDescription>Your contribution to sustainable farming</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-3 gap-6">
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-3xl font-bold text-primary mb-2">87%</div>
-                    <div className="text-sm text-muted-foreground">Local Sourcing</div>
-                  </div>
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-3xl font-bold text-primary mb-2">245kg</div>
-                    <div className="text-sm text-muted-foreground">CO₂ Saved</div>
-                  </div>
-                  <div className="text-center p-4 bg-muted rounded-lg">
-                    <div className="text-3xl font-bold text-primary mb-2">12</div>
-                    <div className="text-sm text-muted-foreground">Partner Farms</div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Preferences Tab */}
-          <TabsContent value="preferences" className="space-y-6">
-            <Card className="premium-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-primary" />
-                  Meat Preferences
-                </CardTitle>
-                <CardDescription>Tell us about your favorite meats and cuts</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <Label className="mb-3 block">Favorite Meat Types</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Beef', 'Pork', 'Lamb', 'Poultry', 'Game', 'Veal'].map(meat => (
-                      <Badge 
-                        key={meat}
-                        variant={customerData.favoriteMeats.includes(meat) ? "default" : "outline"}
-                        className={customerData.favoriteMeats.includes(meat) ? "bg-primary cursor-pointer" : "cursor-pointer"}
-                      >
-                        {meat}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="mb-3 block">Preferred Cuts</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Ribeye', 'Tenderloin', 'Sirloin', 'Shoulder', 'Brisket', 'Short Rib'].map(cut => (
-                      <Badge 
-                        key={cut}
-                        variant={customerData.preferredCuts.includes(cut) ? "default" : "outline"}
-                        className={customerData.preferredCuts.includes(cut) ? "bg-primary cursor-pointer" : "cursor-pointer"}
-                      >
-                        {cut}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <Label>Cooking Preference</Label>
-                    <Input 
-                      value={customerData.cookingPreference} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Household Size</Label>
-                    <Input 
-                      type="number"
-                      value={customerData.householdSize} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Organic Only</Label>
-                      <p className="text-sm text-muted-foreground">Show only certified organic products</p>
-                    </div>
-                    <Switch 
-                      checked={customerData.organicOnly}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Grass-Fed Preference</Label>
-                      <p className="text-sm text-muted-foreground">Prioritize grass-fed options</p>
-                    </div>
-                    <Switch 
-                      checked={customerData.grassFedPreference}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-0.5">
-                      <Label>Local Sourcing Priority</Label>
-                      <p className="text-sm text-muted-foreground">Prefer products from local farms</p>
-                    </div>
-                    <Switch 
-                      checked={customerData.localSourcing}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Family Members Section - shown when household size > 1 */}
-            {customerData.householdSize > 1 && (
-              <Card className="premium-card">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="w-5 h-5 text-primary" />
-                    Family Members
-                  </CardTitle>
-                  <CardDescription>Details about household members and their dietary needs</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    {customerData.familyMembers.map((member, index) => (
-                      <div key={member.id} className="p-4 border rounded-lg bg-muted/30">
-                        <div className="grid md:grid-cols-3 gap-4">
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Gender</Label>
-                            <Input 
-                              value={member.gender} 
-                              disabled={!isEditing}
-                              className="mt-1"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Age</Label>
-                            <Input 
-                              type="number"
-                              value={member.age} 
-                              disabled={!isEditing}
-                              className="mt-1"
-                            />
-                          </div>
-                          <div>
-                            <Label className="text-xs text-muted-foreground">Dietary Requirements</Label>
-                            <Input 
-                              value={member.dietaryRequirements} 
-                              disabled={!isEditing}
-                              className="mt-1"
-                              placeholder="e.g., Vegetarian, Allergies"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                    {isEditing && (
-                      <Button variant="outline" className="w-full">
-                        <Users className="w-4 h-4 mr-2" />
-                        Add Family Member
-                      </Button>
+                    ) : (
+                      <p className="mt-1 text-gray-700">{customerData.address}</p>
                     )}
                   </div>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <Label htmlFor="city">City</Label>
+                      {isEditing ? (
+                        <Input
+                          id="city"
+                          value={customerData.city || ''}
+                          onChange={(e) => setCustomerData({...customerData, city: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.city}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="postal_code">Postal Code</Label>
+                      {isEditing ? (
+                        <Input
+                          id="postal_code"
+                          value={customerData.postal_code || ''}
+                          onChange={(e) => setCustomerData({...customerData, postal_code: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.postal_code}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="country">Country</Label>
+                      {isEditing ? (
+                        <Input
+                          id="country"
+                          value={customerData.country || ''}
+                          onChange={(e) => setCustomerData({...customerData, country: e.target.value})}
+                          className="mt-1"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700">{customerData.country}</p>
+                      )}
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
-            )}
 
-            {/* Culinary Profile Section */}
-            <Card className="premium-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ChefHat className="w-5 h-5 text-primary" />
-                  Culinary Profile
-                </CardTitle>
-                <CardDescription>Your cooking preferences and expertise</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <Label>Cooking Skill Level</Label>
-                    <Input 
-                      value={customerData.cookingSkill} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label>Weekly Meat Consumption</Label>
-                    <Input 
-                      value={customerData.weeklyConsumption} 
-                      disabled={!isEditing}
-                      className="mt-1"
-                    />
-                  </div>
-                </div>
+            </div>
 
-                <div>
-                  <Label className="mb-3 block">Favorite Cuisines</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Dutch', 'French', 'Italian', 'BBQ', 'Asian', 'Mediterranean'].map(cuisine => (
-                      <Badge 
-                        key={cuisine}
-                        variant={customerData.favoriteCuisines.includes(cuisine) ? "default" : "outline"}
-                        className={customerData.favoriteCuisines.includes(cuisine) ? "bg-primary cursor-pointer" : "cursor-pointer"}
-                      >
-                        {cuisine}
-                      </Badge>
-                    ))}
+            {/* Family Members */}
+            
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="w-5 h-5" />
+                      Family Members
+                    </CardTitle>
+                    <Button
+                      onClick={() => setShowAddFamilyModal(true)}
+                      size="sm"
+                      className="bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)] text-white"
+                    >
+                      <Plus className="w-4 h-4 mr-1" />
+                      Add Member
+                    </Button>
                   </div>
-                </div>
-
-                <div>
-                  <Label className="mb-3 block">Cooking Equipment</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {['Grill', 'Oven', 'Smoker', 'Sous-vide', 'Air Fryer', 'Slow Cooker'].map(equip => (
-                      <Badge 
-                        key={equip}
-                        variant={customerData.equipment.includes(equip) ? "default" : "outline"}
-                        className={customerData.equipment.includes(equip) ? "bg-primary cursor-pointer" : "cursor-pointer"}
-                      >
-                        {equip}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Recipe Collection */}
-            <Card className="premium-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BookOpen className="w-5 h-5 text-primary" />
-                  Recipe Collection
-                </CardTitle>
-                <CardDescription>Your saved recipes and cooking inspiration</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {[
-                    { title: 'Perfect Ribeye Steak', time: '20 min', difficulty: 'Easy' },
-                    { title: 'Slow-Roasted Lamb Shoulder', time: '4 hours', difficulty: 'Medium' },
-                    { title: 'BBQ Beef Brisket', time: '8 hours', difficulty: 'Advanced' },
-                    { title: 'Herb-Crusted Pork Tenderloin', time: '45 min', difficulty: 'Medium' }
-                  ].map(recipe => (
-                    <div key={recipe.title} className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="w-20 h-20 bg-muted rounded-md flex-shrink-0"></div>
-                      <div className="flex-1">
-                        <h4 className="font-semibold mb-1">{recipe.title}</h4>
-                        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                          <span>{recipe.time}</span>
-                          <span>•</span>
-                          <span>{recipe.difficulty}</span>
+                </CardHeader>
+                <CardContent>
+                  {familyMembers && familyMembers.length > 0 ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {familyMembers.map((member) => (
+                      <div key={member.id} className="border rounded-lg p-4">
+                        <div className="flex justify-between items-start mb-2">
+                          <div>
+                            <h4 className="font-semibold">{member.name}</h4>
+                            <p className="text-sm text-gray-600">{member.relationship} • Age {member.age}</p>
+                          </div>
+                          <Button
+                            onClick={() => handleDeleteFamilyMember(member.id)}
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
+                        {member.dietary_requirements && member.dietary_requirements.length > 0 && (
+                          <div className="mt-2">
+                            <p className="text-xs text-gray-500 mb-1">Dietary Requirements:</p>
+                            <div className="flex flex-wrap gap-1">
+                              {member.dietary_requirements.map((req, idx) => (
+                                <Badge key={idx} variant="secondary" className="text-xs">{req}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
+                    ))}
+                  </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Users className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                      <p>No family members added yet.</p>
+                      <p className="text-sm">Click "Add Member" to get started.</p>
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  )}
+                </CardContent>
+              </Card>
+          </TabsContent>
+          <TabsContent value="preferences" className="space-y-6">
+            <MeatPreferences 
+              preferences={customerData} 
+              onChange={setCustomerData}
+              isEditing={isEditing}
+            />
+            <CulinaryProfile 
+              preferences={customerData} 
+              onChange={setCustomerData}
+              isEditing={isEditing}
+            />
           </TabsContent>
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-6">
-            <Card className="premium-card">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <ShoppingBag className="w-5 h-5 text-primary" />
-                  Order History
+                  <Package className="w-5 h-5" />
+                  Recent Orders
                 </CardTitle>
-                <CardDescription>Your recent purchases and favorite products</CardDescription>
+                <CardDescription>Your order history and tracking</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  {[
-                    { id: '#12345', date: '2025-10-01', total: '€89.50', status: 'Delivered', items: 'Premium Ribeye, Lamb Shoulder' },
-                    { id: '#12344', date: '2025-09-15', total: '€125.00', status: 'Delivered', items: 'Beef Tenderloin, Organic Chicken' },
-                    { id: '#12343', date: '2025-09-01', total: '€67.80', status: 'Delivered', items: 'Pork Chops, Game Sausages' }
-                  ].map(order => (
-                    <div key={order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <span className="font-semibold">{order.id}</span>
-                          <Badge variant="outline">{order.status}</Badge>
+                {orders && orders.length > 0 ? (
+                  <div className="space-y-4">
+                    {orders.map((order) => (
+                      <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-semibold text-lg">{order.order_number}</h4>
+                            <p className="text-sm text-gray-600">{formatDate(order.order_date)}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                            <p className="text-lg font-bold mt-1">{formatCurrency(order.total_amount)}</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground">{order.items}</p>
-                        <p className="text-xs text-muted-foreground mt-1">{order.date}</p>
+                        {order.items && (
+                          <div className="space-y-2">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-gray-700">{item.name} × {item.quantity}</span>
+                                <span className="text-gray-900 font-medium">{formatCurrency(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {order.tracking_number && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs text-gray-500">Tracking: {order.tracking_number}</p>
+                          </div>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-lg">{order.total}</div>
-                        <Button variant="ghost" size="sm" className="mt-2">
-                          View Details
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="premium-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-primary" />
-                  Favorite Products
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid md:grid-cols-3 gap-4">
-                  {[
-                    { name: 'Premium Ribeye', price: '€32.50/kg', rating: 5 },
-                    { name: 'Organic Lamb Shoulder', price: '€24.00/kg', rating: 5 },
-                    { name: 'Free-Range Chicken', price: '€15.50/kg', rating: 4 }
-                  ].map(product => (
-                    <div key={product.name} className="p-4 border rounded-lg hover:shadow-md transition-shadow">
-                      <div className="aspect-square bg-muted rounded-md mb-3"></div>
-                      <h4 className="font-semibold mb-1">{product.name}</h4>
-                      <div className="flex items-center gap-1 mb-2">
-                        {[...Array(5)].map((_, i) => (
-                          <Star key={i} className={`w-3 h-3 ${i < product.rating ? 'fill-primary text-primary' : 'text-muted'}`} />
-                        ))}
-                      </div>
-                      <p className="text-sm font-bold text-primary">{product.price}</p>
-                      <Button size="sm" className="w-full mt-3">Reorder</Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Subscription Tab */}
-          <TabsContent value="subscription" className="space-y-6">
-            <Card className="premium-card border-primary/50">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-primary" />
-                  Active Subscription
-                </CardTitle>
-                <CardDescription>Manage your recurring meat delivery</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="p-4 bg-muted rounded-lg">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-semibold text-lg">Premium Family Box</h3>
-                      <p className="text-sm text-muted-foreground">Bi-weekly delivery</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-primary">€95.00</div>
-                      <p className="text-xs text-muted-foreground">per delivery</p>
-                    </div>
+                    ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Next Delivery:</span>
-                      <p className="font-semibold">Saturday, Oct 12</p>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Delivery Window:</span>
-                      <p className="font-semibold">10:00 - 14:00</p>
-                    </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No orders yet</p>
                   </div>
-                </div>
-
-                <div>
-                  <Label>Delivery Frequency</Label>
-                  <Input 
-                    value={customerData.deliveryFrequency} 
-                    disabled={!isEditing}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label>Preferred Delivery Day</Label>
-                  <Input 
-                    value={customerData.preferredDeliveryDay} 
-                    disabled={!isEditing}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <Button variant="outline" className="flex-1">
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Pause Subscription
-                  </Button>
-                  <Button variant="outline" className="flex-1">
-                    <Edit className="w-4 h-4 mr-2" />
-                    Customize Box
-                  </Button>
-                </div>
+                )}
               </CardContent>
             </Card>
+
+            {/* Active Subscriptions */}
+            {subscriptions && subscriptions.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <CreditCard className="w-5 h-5" />
+                    Active Subscriptions
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {subscriptions.filter(sub => sub.status === 'active').map((subscription) => (
+                      <div key={subscription.id} className="border rounded-lg p-4 bg-green-50">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="font-semibold">{subscription.subscription_name}</h4>
+                            <p className="text-sm text-gray-600 capitalize">{subscription.frequency}</p>
+                            <p className="text-sm text-gray-600 mt-1">
+                              Next delivery: {formatDate(subscription.next_delivery_date)}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold">{formatCurrency(subscription.price_per_delivery)}</p>
+                            <Badge className="bg-green-600 mt-1">Active</Badge>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Loyalty Tab */}
           <TabsContent value="loyalty" className="space-y-6">
-            <Card className="premium-card border-primary/50">
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-primary" />
+                  <Award className="w-5 h-5" />
                   Loyalty Program
                 </CardTitle>
-                <CardDescription>Your rewards and membership benefits</CardDescription>
+                <CardDescription>Your rewards and benefits</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="text-center p-6 bg-gradient-to-br from-primary/10 to-accent/10 rounded-lg">
-                  <Badge className="gold-shimmer text-foreground border-0 mb-4 text-lg px-4 py-2">
-                    <Award className="w-5 h-5 mr-2" />
-                    {customerData.membershipTier} Member
-                  </Badge>
-                  <div className="text-4xl font-bold text-primary mb-2">{customerData.loyaltyPoints}</div>
-                  <p className="text-muted-foreground">Available Points</p>
-                  <div className="mt-4 w-full bg-muted rounded-full h-2">
-                    <div className="bg-primary h-2 rounded-full" style={{width: '65%'}}></div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-lg">
+                    <p className="text-sm text-purple-700 mb-1">Points Balance</p>
+                    <p className="text-3xl font-bold text-purple-900">{customerData.loyalty_points?.toLocaleString()}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-2">550 points to Platinum tier</p>
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg">
+                    <p className="text-sm text-blue-700 mb-1">Member Since</p>
+                    <p className="text-3xl font-bold text-blue-900">{new Date(customerData.member_since).getFullYear()}</p>
+                  </div>
                 </div>
 
-                <div>
-                  <h3 className="font-semibold mb-3">Your Benefits</h3>
-                  <div className="space-y-2">
-                    {[
-                      '10% discount on all orders',
-                      'Free delivery on orders over €50',
-                      'Priority access to limited cuts',
-                      'Exclusive recipe content',
-                      'Personal butcher consultation'
-                    ].map(benefit => (
-                      <div key={benefit} className="flex items-center gap-2 text-sm">
-                        <div className="w-1.5 h-1.5 rounded-full bg-primary"></div>
-                        <span>{benefit}</span>
+                <div className="border-t pt-6">
+                  <h3 className="font-semibold mb-4">Lifetime Stats</h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Total Orders</p>
+                      <p className="text-2xl font-bold">{customerData.total_orders}</p>
+                    </div>
+                  </div>
+
+                <div className="border-t pt-6">
+                  <h3 className="font-semibold mb-4 flex items-center gap-2">
+                    <Leaf className="w-5 h-5 text-green-600" />
+                    Sustainability Impact
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">Your contribution to a better planet</p>
+                  {sustainabilityData && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-green-50 p-4 rounded-lg">
+                        <p className="text-sm text-green-700 mb-1">CO₂ Saved</p>
+                        <p className="text-2xl font-bold text-green-900">{sustainabilityData.co2_saved_kg} kg</p>
                       </div>
-                    ))}
-                  </div>
+                      <div className="bg-blue-50 p-4 rounded-lg">
+                        <p className="text-sm text-blue-700 mb-1">Local Sourcing</p>
+                        <p className="text-2xl font-bold text-blue-900">{sustainabilityData.local_sourcing_percentage}%</p>
+                      </div>
+                      <div className="bg-amber-50 p-4 rounded-lg">
+                        <p className="text-sm text-amber-700 mb-1">Partner Farms</p>
+                        <p className="text-2xl font-bold text-amber-900">{sustainabilityData.partner_farms_count}</p>
+                      </div>
+                      <div className="bg-purple-50 p-4 rounded-lg">
+                        <p className="text-sm text-purple-700 mb-1">Sustainability Score</p>
+                        <p className="text-2xl font-bold text-purple-900">{sustainabilityData.sustainability_score}/100</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-
-                <div>
-                  <h3 className="font-semibold mb-3">Referral Program</h3>
-                  <p className="text-sm text-muted-foreground mb-3">Share your love for premium meat! Give €20, Get €20</p>
-                  <div className="flex gap-2">
-                    <Input value="JANDEVRIES20" readOnly className="font-mono" />
-                    <Button>Copy Code</Button>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -774,92 +721,209 @@ function App() {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
-            <Card className="premium-card">
+            
+            {/* Delivery Instructions */}
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-primary" />
+                  <MapPin className="w-5 h-5" />
+                  Delivery Instructions
+                </CardTitle>
+                <CardDescription>Special instructions for delivery</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {isEditing ? (
+                  <textarea
+                    value={customerData.delivery_instructions || ''}
+                    onChange={(e) => setCustomerData({...customerData, delivery_instructions: e.target.value})}
+                    className="w-full min-h-[100px] p-3 border rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
+                    placeholder="Enter any special delivery instructions..."
+                  />
+                ) : (
+                  <p className="text-gray-700 whitespace-pre-wrap">
+                    {customerData.delivery_instructions || 'No delivery instructions provided'}
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Communication Preferences */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Mail className="w-5 h-5" />
                   Communication Preferences
                 </CardTitle>
+                <CardDescription>Manage how we communicate with you</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="space-y-6">
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Email Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Order updates and delivery notifications</p>
+                  <div className="flex items-start gap-3">
+                    <Mail className="w-5 h-5 text-amber-600 mt-1" />
+                    <div>
+                      <p className="font-medium">Marketing Communications</p>
+                      <p className="text-sm text-gray-600">Receive promotional emails and special event invitations</p>
+                    </div>
                   </div>
-                  <Switch 
-                    checked={customerData.emailNotifications}
+                  <Switch
+                    checked={customerData.marketing_communications}
+                    onCheckedChange={(checked) => setCustomerData({...customerData, marketing_communications: checked})}
                     disabled={!isEditing}
                   />
                 </div>
+                
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>SMS Notifications</Label>
-                    <p className="text-sm text-muted-foreground">Delivery alerts and special offers</p>
+                  <div className="flex items-start gap-3">
+                    <TrendingUp className="w-5 h-5 text-purple-600 mt-1" />
+                    <div>
+                      <p className="font-medium">Marketing Personalization</p>
+                      <p className="text-sm text-gray-600">Allow us to suggest products based on your preferences</p>
+                    </div>
                   </div>
-                  <Switch 
-                    checked={customerData.smsNotifications}
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Newsletter Subscription</Label>
-                    <p className="text-sm text-muted-foreground">Weekly updates and promotions</p>
-                  </div>
-                  <Switch 
-                    checked={customerData.newsletter}
-                    disabled={!isEditing}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <Label>Recipe Emails</Label>
-                    <p className="text-sm text-muted-foreground">Cooking tips and recipe inspiration</p>
-                  </div>
-                  <Switch 
-                    checked={customerData.recipeEmails}
+                  <Switch
+                    checked={customerData.marketing_personalization}
+                    onCheckedChange={(checked) => setCustomerData({...customerData, marketing_personalization: checked})}
                     disabled={!isEditing}
                   />
                 </div>
               </CardContent>
             </Card>
 
-            <Card className="premium-card">
+            {/* Privacy & Data */}
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Shield className="w-5 h-5 text-primary" />
-                  Privacy & Security
+                  <Settings className="w-5 h-5" />
+                  Privacy & Data
                 </CardTitle>
+                <CardDescription>Manage your personal data</CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <Button variant="outline" className="w-full justify-start">
-                  <Shield className="w-4 h-4 mr-2" />
-                  Change Password
-                </Button>
-                <Button variant="outline" className="w-full justify-start">
+              <CardContent className="space-y-3">
+                <Button
+                  onClick={handleDownload}
+                  variant="outline"
+                  className="w-full justify-center"
+                >
                   <Download className="w-4 h-4 mr-2" />
-                  Download My Data (GDPR)
+                  Download All My Data
                 </Button>
-                <Button variant="destructive" className="w-full justify-start">
-                  <X className="w-4 h-4 mr-2" />
-                  Delete Account
+                
+                <Button
+                  onClick={() => {
+                    if (confirm('Are you sure you want to delete your profile and all data? This action cannot be undone.')) {
+                      alert('Delete functionality will be implemented by the backend team.');
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full justify-center text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete Profile & All Data
                 </Button>
               </CardContent>
             </Card>
+
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Footer */}
-      <footer className="bg-card border-t mt-16 py-8">
-        <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-          <p>© 2025 Premium Biological Butcher. Committed to sustainable, ethical meat sourcing.</p>
-          <p className="mt-2">🌱 100% Organic • 🐄 Animal Welfare Certified • 🇳🇱 Proudly Dutch</p>
+      {/* Add Family Member Modal */}
+      {showAddFamilyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold">Add Family Member</h3>
+              <Button
+                onClick={() => setShowAddFamilyModal(false)}
+                variant="ghost"
+                size="sm"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="member-name">Name *</Label>
+                <Input
+                  id="member-name"
+                  value={newMember.name}
+                  onChange={(e) => setNewMember({ ...newMember, name: e.target.value })}
+                  placeholder="Enter name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="member-relationship">Relationship *</Label>
+                <select
+                  id="member-relationship"
+                  value={newMember.relationship}
+                  onChange={(e) => setNewMember({ ...newMember, relationship: e.target.value })}
+                  className="w-full mt-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
+                >
+                  <option value="">Select relationship</option>
+                  <option value="Spouse">Spouse</option>
+                  <option value="Partner">Partner</option>
+                  <option value="Child">Child</option>
+                  <option value="Parent">Parent</option>
+                  <option value="Sibling">Sibling</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="member-age">Age *</Label>
+                  <Input
+                    id="member-age"
+                    type="number"
+                    value={newMember.age}
+                    onChange={(e) => setNewMember({ ...newMember, age: e.target.value })}
+                    placeholder="Age"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="member-gender">Gender</Label>
+                  <select
+                    id="member-gender"
+                    value={newMember.gender}
+                    onChange={(e) => setNewMember({ ...newMember, gender: e.target.value })}
+                    className="w-full mt-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
+                  >
+                    <option value="">Select</option>
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="member-dietary">Dietary Requirements</Label>
+                <Input
+                  id="member-dietary"
+                  value={newMember.dietary_requirements}
+                  onChange={(e) => setNewMember({ ...newMember, dietary_requirements: e.target.value })}
+                  placeholder="e.g., Vegetarian, No nuts (comma separated)"
+                />
+              </div>
+              <div className="flex gap-2 pt-4">
+                <Button
+                  onClick={() => setShowAddFamilyModal(false)}
+                  variant="outline"
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleAddFamilyMember}
+                  className="flex-1 bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)] text-white"
+                  disabled={!newMember.name || !newMember.relationship || !newMember.age}
+                >
+                  Add Member
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
-      </footer>
+      )}
     </div>
-  )
+  );
 }
 
-export default App
+export default App;
