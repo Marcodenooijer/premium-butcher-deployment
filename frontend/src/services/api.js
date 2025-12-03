@@ -116,3 +116,12 @@ export const api = {
 
 export default api;
 
+
+// Get recommended order
+export const getRecommendedOrder = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/profile/recommended-order`, {
+    headers: await getAuthHeaders(),
+  });
+  if (!response.ok) throw new Error('Failed to fetch recommended order');
+  return response.json();
+};

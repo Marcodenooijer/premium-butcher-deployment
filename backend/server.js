@@ -338,6 +338,44 @@ app.get('/api/profile/orders', authenticateUser, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
+// Get recommended order for current user
+app.get('/api/profile/recommended-order', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    // Get recommended order items
+    const result = await pool.query(
+      `SELECT 
+        id,
+        product_name,
+        product_sku,
+        quantity,
+        price,
+        image_url,
+        is_recommended,
+        recommendation_reason
+      FROM recommended_orders
+      WHERE customer_id = $1
+      ORDER BY is_recommended DESC, id ASC`,
+      [customerId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching recommended order:', error);
+    res.status(500).json({ error: 'Failed to fetch recommended order' });
+  }
+});
 
 // Get current user's subscriptions
 app.get('/api/profile/subscriptions', authenticateUser, async (req, res) => {
@@ -570,6 +608,7 @@ Protected endpoints (require Authorization header):
   PUT  /api/profile/family/:memberId
   DEL  /api/profile/family/:memberId
   GET  /api/profile/orders
+  GET  /api/profile/recommended-order
   GET  /api/profile/subscriptions
   PUT  /api/profile/subscriptions/:subscriptionId
 

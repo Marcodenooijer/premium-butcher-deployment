@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import api from './services/api';
+import api, { getRecommendedOrder } from './services/api';
 import { useAuth } from './contexts/AuthContext';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,7 +36,10 @@ import {
   LogOut,
   Plus,
   Trash2,
-  X
+  X,
+  ShoppingCart,
+  Sparkles,
+  ExternalLink
 } from 'lucide-react';
 import './App.css';
 
@@ -56,6 +59,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [recommendedOrder, setRecommendedOrder] = useState([]);
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
@@ -73,12 +77,13 @@ function App() {
       setError(null);
       
       // Fetch all data in parallel
-      const [customer, family, customerOrders, customerSubscriptions, sustainability] = await Promise.all([
+      const [customer, family, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
         api.getProfile(),
         api.getFamilyMembers(),
         api.getOrders({ limit: 10 }),
         api.getSubscriptions(),
         api.getSustainability(),
+        getRecommendedOrder(),
       ]);
       
       setCustomerData(customer);
@@ -86,6 +91,7 @@ function App() {
       setOrders(customerOrders);
       setSubscriptions(customerSubscriptions);
       setSustainabilityData(sustainability);
+      setRecommendedOrder(recommended);
       
     } catch (err) {
       console.error('Error loading data:', err);
@@ -257,7 +263,7 @@ function App() {
           <div className="flex justify-between items-start">
             <div>
               <h1 className="text-3xl font-bold mb-2">{customerData.name}</h1>
-              <div className="flex items-center gap-4 text-white/90">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-white/90">
                 <span className="flex items-center gap-1">
                   <Mail className="w-4 h-4" />
                   {customerData.email}
@@ -270,21 +276,23 @@ function App() {
                 )}
               </div>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 justify-center md:justify-end">
               {isEditing ? (
                 <>
-                  <Button 
-                    onClick={() => setIsEditing(false)} 
-                    variant="outline"
+                  {/* CANCEL BUTTON */}
+                  <Button
+                    onClick={() => setIsEditing(false)}
                     disabled={saving}
-                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-sm md:text-base px-3 md:px-4"
                   >
                     Cancel
                   </Button>
-                  <Button 
+
+                  {/* SAVE BUTTON */}
+                  <Button
                     onClick={handleSave}
                     disabled={saving}
-                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90"
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90 text-sm md:text-base px-3 md:px-4"
                   >
                     {saving ? (
                       <>
@@ -293,85 +301,97 @@ function App() {
                       </>
                     ) : (
                       <>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Changes
+                        <Save className="w-4 h-4 mr-1 md:mr-2" />
+
+                        {/* Desktop */}
+                        <span className="hidden md:block">Save Changes</span>
+                        {/* Mobile */}
+                        <span className="block md:hidden">Save</span>
                       </>
                     )}
                   </Button>
                 </>
               ) : (
                 <>
+                  {/* VISIT WEBSITE BUTTON */}
                   <Button
-                    onClick={() => window.open('https://www.biologischvleeschatelier.nl/', '_blank' )}
-                    className="bg-green-600 hover:bg-green-700 text-white border-0"
+                    onClick={() =>
+                      window.open("https://www.biologischvleeschatelier.nl/", "_blank" )
+                    }
+                    className="bg-green-600 hover:bg-green-700 text-white border-0 text-sm md:text-base px-3 md:px-4"
                   >
-                    <Globe className="w-4 h-4 mr-2" />
-                    Visit Website
+                    <Globe className="w-4 h-4 mr-1 md:mr-2" />
+
+                    {/* Desktop */}
+                    <span className="hidden md:block">Visit Website</span>
+                    {/* Mobile */}
+                    <span className="block md:hidden">Website</span>
                   </Button>
-                  <Button 
-                    onClick={handleDownload}
-                    variant="outline"
-                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download
-                  </Button>
-                  <Button 
+
+                  {/* EDIT BUTTON */}
+                  <Button
                     onClick={() => setIsEditing(true)}
-                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90"
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90 text-sm md:text-base px-3 md:px-4"
                   >
-                    <Edit2 className="w-4 h-4 mr-2" />
-                    Edit Profile
+                    <Edit2 className="w-4 h-4 mr-1 md:mr-2" />
+
+                    {/* Desktop */}
+                    <span className="hidden md:block">Edit Profile</span>
+                    {/* Mobile */}
+                    <span className="block md:hidden">Edit</span>
                   </Button>
+
+                  {/* LOGOUT BUTTON */}
                   <Button
                     onClick={handleLogout}
                     variant="outline"
-                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-sm md:text-base px-3 md:px-4"
                   >
-                    <LogOut className="w-4 h-4 mr-2" />
+                    <LogOut className="w-4 h-4 mr-1 md:mr-2" />
                     Logout
                   </Button>
                 </>
               )}
-
             </div>
-          </div>
 
+          </div>
+          
           {/* Premium Header Blocks */}
           <PremiumHeaderBlocks />
           
-        </div>
       </div>
+        </div>
 
+      {/* Main Content */}
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-5">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <User className="w-4 h-4" />
-              <span className="hidden sm:inline">Overview</span>
+              <span className="hidden sm:block">Overview</span>
             </TabsTrigger>
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Heart className="w-4 h-4" />
-              <span className="hidden sm:inline">Preferences</span>
+              <span className="hidden sm:block">Preferences</span>
             </TabsTrigger>
             <TabsTrigger value="orders" className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Orders</span>
+              <span className="hidden sm:block">Orders</span>
             </TabsTrigger>
             <TabsTrigger value="loyalty" className="flex items-center gap-2">
               <Award className="w-4 h-4" />
-              <span className="hidden sm:inline">Loyalty</span>
+              <span className="hidden sm:block">Loyalty</span>
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden sm:block">Settings</span>
             </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
               {/* Personal Information */}
               <Card>
                 <CardHeader>
@@ -381,7 +401,7 @@ function App() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="name">Full Name</Label>
                       {isEditing ? (
@@ -406,7 +426,48 @@ function App() {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-gray-700">{customerData.email}</p>
+                        <p className="mt-1 text-gray-700 break-all">{customerData.email}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="secondary_email">Secondary Email</Label>
+                      {isEditing ? (
+                        <Input
+                          id="secondary_email"
+                          type="email"
+                          value={customerData.secondary_email || ''}
+                          onChange={(e) => setCustomerData({...customerData, secondary_email: e.target.value})}
+                          className="mt-1"
+                          placeholder="Optional secondary email"
+                        />
+                      ) : (
+                        <p className="mt-1 text-gray-700 break-all">{customerData.secondary_email || 'Not provided'}</p>
+                      )}
+                      
+                      {/* Primary Email Switch - only show if secondary email exists */}
+                      {customerData.secondary_email && (
+                        <div className="mt-3 flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <div className="flex-1">
+                            <Label htmlFor="primary_email_switch" className="text-sm font-medium">
+                              Use secondary email for communications
+                            </Label>
+                            <p className="text-xs text-gray-500 mt-1">
+                              {customerData.primary_email_for_communication === 'secondary' 
+                                ? `Using: ${customerData.secondary_email}`
+                                : `Using: ${customerData.email}`}
+                            </p>
+                          </div>
+                          <Switch
+                            id="primary_email_switch"
+                            checked={customerData.primary_email_for_communication === 'secondary'}
+                            onCheckedChange={(checked) => {
+                              setCustomerData({
+                                ...customerData, 
+                                primary_email_for_communication: checked ? 'secondary' : 'primary'
+                              });
+                            }}
+                          />
+                        </div>
                       )}
                     </div>
                     <div>
@@ -572,6 +633,142 @@ function App() {
 
           {/* Orders Tab */}
           <TabsContent value="orders" className="space-y-6">
+          {/* Recommended Order Section */}
+          {recommendedOrder && recommendedOrder.length > 0 && (
+            <Card className="border-2 border-amber-200 bg-gradient-to-br from-amber-50 to-white shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-amber-100 to-orange-50 border-b border-amber-200">
+                <CardTitle className="flex items-center gap-3 text-2xl">
+                  <Sparkles className="w-7 h-7 text-amber-600" />
+                  Your Recommended Order
+                </CardTitle>
+                <CardDescription className="text-base">
+                  Based on your preferences, we've prepared your next order with some special recommendations
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                {/* Products List - Shopify Style */}
+                <div className="space-y-4 mb-6">
+                  {recommendedOrder.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className={`flex flex-col md:flex-row gap-4 p-4 rounded-lg border-2 transition-all hover:shadow-md ${
+                        item.is_recommended 
+                          ? 'border-purple-300 bg-purple-50/50' 
+                          : 'border-gray-200 bg-white'
+                      }`}
+                    >
+                      {/* Product Image - Fixed aspect ratio */}
+                      <div className="flex-shrink-0 w-full md:w-auto">
+                        <img 
+                          src={item.image_url} 
+                          alt={item.product_name}
+                          className="w-full md:w-24 h-48 md:h-24 object-cover rounded-lg"
+                        />
+                      </div>
+                      
+                      {/* Product Details */}
+                      <div className="flex-grow">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h3 className="font-semibold text-lg">{item.product_name}</h3>
+                            {item.is_recommended && (
+                              <Badge className="mt-1 bg-purple-600">
+                                <Sparkles className="w-3 h-3 mr-1" />
+                                Recommended
+                              </Badge>
+                            )}
+                            <p className="text-sm text-gray-600 mt-1 italic">{item.recommendation_reason}</p>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Quantity Controls */}
+                      <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3">
+                        <div className="flex items-center gap-2 border-2 border-gray-300 rounded-lg">
+                          <button
+                            className="px-3 py-2 hover:bg-gray-100 transition-colors"
+                            onClick={() => {
+                              const newOrder = recommendedOrder.map(i => 
+                                i.id === item.id && i.quantity > 1 
+                                  ? {...i, quantity: i.quantity - 1} 
+                                  : i
+                              );
+                              setRecommendedOrder(newOrder);
+                            }}
+                          >
+                            −
+                          </button>
+                          <span className="px-3 font-medium min-w-[2rem] text-center">{item.quantity}</span>
+                          <button
+                            className="px-3 py-2 hover:bg-gray-100 transition-colors"
+                            onClick={() => {
+                              const newOrder = recommendedOrder.map(i => 
+                                i.id === item.id 
+                                  ? {...i, quantity: i.quantity + 1} 
+                                  : i
+                              );
+                              setRecommendedOrder(newOrder);
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
+                        
+                        {/* Price and Delete */}
+                        <div className="flex items-center gap-3">
+                          <span className="font-bold text-lg whitespace-nowrap">
+                            €{(item.price * item.quantity).toFixed(2)}
+                          </span>
+                          <button
+                            className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
+                            onClick={() => {
+                              const newOrder = recommendedOrder.filter(i => i.id !== item.id);
+                              setRecommendedOrder(newOrder);
+                            }}
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Total and Order Button */}
+                <div className="border-t-2 border-amber-200 pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <span className="text-xl font-semibold">Total</span>
+                    <span className="text-2xl font-bold text-[oklch(0.35_0.12_15)]">
+                      €{recommendedOrder.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0).toFixed(2)}
+                    </span>
+                  </div>
+                  
+                  <Button 
+                    className="w-full bg-gradient-to-r from-[oklch(0.35_0.12_15)] to-amber-700 hover:from-[oklch(0.30_0.12_15)] hover:to-amber-800 text-white text-lg py-6 shadow-lg hover:shadow-xl transition-all"
+                    onClick={() => {
+                      const cartParams = recommendedOrder.map((item, index) =>
+                        `items[${index}][id]=${item.product_sku}&items[${index}][quantity]=${item.quantity}`
+                      ).join('&');
+                      const shopifyUrl = `https://www.biologischvleeschatelier.nl/cart/add?${cartParams}`;
+                      window.open(shopifyUrl, '_blank' );
+                    }}
+                  >
+                    <ShoppingCart className="w-6 h-6 mr-2" />
+                    Order in Shopify
+                    <ExternalLink className="w-5 h-5 ml-2" />
+                  </Button>
+                  
+                  <p className="text-xs text-center text-gray-500 mt-3">
+                    You'll be redirected to our Shopify store with all items in your cart
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
