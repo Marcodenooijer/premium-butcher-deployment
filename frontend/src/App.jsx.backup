@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import api, { getRecommendedOrder } from './services/api';
 import { useAuth } from './contexts/AuthContext';
-import OrdersSection from './components/OrdersSection';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,12 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "./components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  User,
-  Heart,
-  ShoppingBag,
-  Settings,
+import { 
+  User, 
+  Heart, 
+  ShoppingBag, 
+  Settings, 
   Award,
   Edit2,
   Save,
@@ -45,88 +43,13 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-import Header from './components/Header';
+import PremiumHeaderBlocks from './components/PremiumHeaderBlocks';
 import MeatPreferences from './components/MeatPreferences';
 import CulinaryProfile from './components/CulinaryProfile';
-
-// ISO 639-1 Language Codes (common European languages)
-const LANGUAGES = [
-  { code: 'nl', name: 'Dutch (Nederlands)' },
-  { code: 'en', name: 'English' },
-  { code: 'de', name: 'German (Deutsch)' },
-  { code: 'fr', name: 'French (Français)' },
-  { code: 'es', name: 'Spanish (Español)' },
-  { code: 'it', name: 'Italian (Italiano)' },
-  { code: 'pt', name: 'Portuguese (Português)' },
-  { code: 'pl', name: 'Polish (Polski)' },
-  { code: 'ro', name: 'Romanian (Română)' },
-  { code: 'el', name: 'Greek (Ελληνικά)' },
-  { code: 'sv', name: 'Swedish (Svenska)' },
-  { code: 'da', name: 'Danish (Dansk)' },
-  { code: 'fi', name: 'Finnish (Suomi)' },
-  { code: 'no', name: 'Norwegian (Norsk)' },
-  { code: 'cs', name: 'Czech (Čeština)' },
-  { code: 'hu', name: 'Hungarian (Magyar)' },
-  { code: 'bg', name: 'Bulgarian (Български)' },
-  { code: 'sk', name: 'Slovak (Slovenčina)' },
-  { code: 'hr', name: 'Croatian (Hrvatski)' },
-  { code: 'tr', name: 'Turkish (Türkçe)' },
-  { code: 'ar', name: 'Arabic (العربية)' },
-  { code: 'zh', name: 'Chinese (中文)' },
-];
-
-// ISO 3166-1 Country Codes (European countries)
-const NATIONALITIES = [
-  { code: 'NL', name: 'Netherlands' },
-  { code: 'BE', name: 'Belgium' },
-  { code: 'DE', name: 'Germany' },
-  { code: 'FR', name: 'France' },
-  { code: 'GB', name: 'United Kingdom' },
-  { code: 'ES', name: 'Spain' },
-  { code: 'IT', name: 'Italy' },
-  { code: 'PT', name: 'Portugal' },
-  { code: 'PL', name: 'Poland' },
-  { code: 'RO', name: 'Romania' },
-  { code: 'GR', name: 'Greece' },
-  { code: 'SE', name: 'Sweden' },
-  { code: 'DK', name: 'Denmark' },
-  { code: 'FI', name: 'Finland' },
-  { code: 'NO', name: 'Norway' },
-  { code: 'CZ', name: 'Czech Republic' },
-  { code: 'HU', name: 'Hungary' },
-  { code: 'BG', name: 'Bulgaria' },
-  { code: 'SK', name: 'Slovakia' },
-  { code: 'HR', name: 'Croatia' },
-  { code: 'AT', name: 'Austria' },
-  { code: 'CH', name: 'Switzerland' },
-  { code: 'IE', name: 'Ireland' },
-  { code: 'LU', name: 'Luxembourg' },
-  { code: 'TR', name: 'Turkey' },
-  { code: 'MA', name: 'Morocco' },
-  { code: 'DZ', name: 'Algeria' },
-  { code: 'SY', name: 'Syria' },
-  { code: 'IQ', name: 'Iraq' },
-];
-
-// Common European Ethnicities
-const ETHNICITIES = [
-  'Western European',
-  'Southern European',
-  'Eastern European',
-  'East Asian',
-  'Middle Eastern & North African',
-  'South Asian',
-  'West African',
-  'Latin America',
-  'Mixed/Multiple',
-  'Other',
-  'Prefer not to say',
-];
-
 function App() {
-  const { logout, currentUser } = useAuth();
+  const { logout } = useAuth();
   // Get customer ID from URL parameter or default to 1
-
+  
   // State management
   const [customerData, setCustomerData] = useState(null);
   const [sustainabilityData, setSustainabilityData] = useState(null);
@@ -137,24 +60,22 @@ function App() {
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [recommendedOrder, setRecommendedOrder] = useState([]);
-  const [isEditingPersonal, setIsEditingPersonal] = useState(false);
-  const [isEditingPreferences, setIsEditingPreferences] = useState(false);
-  const [isEditingSettings, setIsEditingSettings] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [newMember, setNewMember] = useState({ name: '', relationship: '', age: '', gender: '', dietary_requirements: '' });
-
+  
   // Load data from API on component mount
   useEffect(() => {
     loadAllData();
   }, []);
-
+  
   const loadAllData = async () => {
     try {
       setLoading(true);
       setError(null);
-
+      
       // Fetch all data in parallel
       const [customer, family, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
         api.getProfile(),
@@ -164,14 +85,14 @@ function App() {
         api.getSustainability(),
         getRecommendedOrder(),
       ]);
-
+      
       setCustomerData(customer);
       setFamilyMembers(family);
       setOrders(customerOrders);
       setSubscriptions(customerSubscriptions);
       setSustainabilityData(sustainability);
       setRecommendedOrder(recommended);
-
+      
     } catch (err) {
       console.error('Error loading data:', err);
       setError(err.message);
@@ -179,18 +100,18 @@ function App() {
       setLoading(false);
     }
   };
-
+  
   const handleSave = async () => {
     try {
       setSaving(true);
-
+      
       // Update customer profile via API
       const updatedCustomer = await api.updateProfile(customerData);
       setCustomerData(updatedCustomer);
-
-      setIsEditingPersonal(false);
+      
+      setIsEditing(false);
       alert('✅ Profile updated successfully!');
-
+      
     } catch (err) {
       console.error('Error saving:', err);
       alert(`❌ Failed to save changes: ${err.message}`);
@@ -198,37 +119,6 @@ function App() {
       setSaving(false);
     }
   };
-
-const handleProfileUpdate = async (updates) => {
-  try {
-    setSaving(true);
-    
-    // Merge updates with existing customer data
-    const updatedData = {
-      ...customerData,
-      ...updates
-    };
-    
-    // Update local state immediately for UI responsiveness
-    setCustomerData(updatedData);
-    
-    // Save to API
-    const response = await api.updateProfile(updatedData);
-    setCustomerData(response);
-    
-    // Show success message
-    console.log('✅ Preferences updated successfully!');
-    
-  } catch (err) {
-    console.error('Error updating preferences:', err);
-    // Revert to previous state on error
-    await loadAllData();
-    alert(`❌ Failed to update preferences: ${err.message}`);
-  } finally {
-    setSaving(false);
-  }
-};
-
 
   const handleDownload = () => {
     const dataStr = JSON.stringify(customerData, null, 2);
@@ -258,7 +148,7 @@ const handleProfileUpdate = async (updates) => {
         age: parseInt(newMember.age),
         dietary_requirements: newMember.dietary_requirements ? newMember.dietary_requirements.split(",").map(r => r.trim()) : []
       };
-
+      
       await api.addFamilyMember(memberData);
       await loadAllData();
       setShowAddFamilyModal(false);
@@ -272,7 +162,7 @@ const handleProfileUpdate = async (updates) => {
   // Delete family member handler
   const handleDeleteFamilyMember = async (memberId) => {
     if (!confirm("Are you sure you want to remove this family member?")) return;
-
+    
     try {
       await api.deleteFamilyMember(memberId);
       await loadAllData();
@@ -328,8 +218,8 @@ const handleProfileUpdate = async (updates) => {
         </div>
       </div>
     );
-  };
-
+  }
+  
   // Show error state
   if (error) {
     return (
@@ -348,7 +238,7 @@ const handleProfileUpdate = async (updates) => {
       </div>
     );
   }
-
+  
   // Show "no data" state
   if (!customerData) {
     return (
@@ -364,32 +254,138 @@ const handleProfileUpdate = async (updates) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* New Header Component */}
-      <Header customerData={customerData} onLogout={handleLogout} />
+      {/* Header */}
+      <div className="bg-gradient-to-br from-[oklch(0.35_0.12_15)] via-[oklch(0.38_0.14_20)] to-[oklch(0.42_0.10_10)] relative overflow-hidden text-white">
+        {/* Premium decorative overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/10 pointer-events-none"></div>
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.08) 0%, transparent 50%)'}}></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{customerData.name}</h1>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-white/90">
+                <span className="flex items-center gap-1">
+                  <Mail className="w-4 h-4" />
+                  {customerData.email}
+                </span>
+                {customerData.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-4 h-4" />
+                    {customerData.phone}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center md:justify-end">
+              {isEditing ? (
+                <>
+                  {/* CANCEL BUTTON */}
+                  <Button
+                    onClick={() => setIsEditing(false)}
+                    disabled={saving}
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-sm md:text-base px-3 md:px-4"
+                  >
+                    Cancel
+                  </Button>
 
+                  {/* SAVE BUTTON */}
+                  <Button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90 text-sm md:text-base px-3 md:px-4"
+                  >
+                    {saving ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[oklch(0.35_0.12_15)] mr-2"></div>
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4 mr-1 md:mr-2" />
+
+                        {/* Desktop */}
+                        <span className="hidden md:block">Save Changes</span>
+                        {/* Mobile */}
+                        <span className="block md:hidden">Save</span>
+                      </>
+                    )}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {/* VISIT WEBSITE BUTTON */}
+                  <Button
+                    onClick={() =>
+                      window.open("https://www.biologischvleeschatelier.nl/", "_blank" )
+                    }
+                    className="bg-green-600 hover:bg-green-700 text-white border-0 text-sm md:text-base px-3 md:px-4"
+                  >
+                    <Globe className="w-4 h-4 mr-1 md:mr-2" />
+
+                    {/* Desktop */}
+                    <span className="hidden md:block">Visit Website</span>
+                    {/* Mobile */}
+                    <span className="block md:hidden">Website</span>
+                  </Button>
+
+                  {/* EDIT BUTTON */}
+                  <Button
+                    onClick={() => setIsEditing(true)}
+                    className="bg-white text-[oklch(0.35_0.12_15)] hover:bg-white/90 text-sm md:text-base px-3 md:px-4"
+                  >
+                    <Edit2 className="w-4 h-4 mr-1 md:mr-2" />
+
+                    {/* Desktop */}
+                    <span className="hidden md:block">Edit Profile</span>
+                    {/* Mobile */}
+                    <span className="block md:hidden">Edit</span>
+                  </Button>
+
+                  {/* LOGOUT BUTTON */}
+                  <Button
+                    onClick={handleLogout}
+                    variant="outline"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-sm md:text-base px-3 md:px-4"
+                  >
+                    <LogOut className="w-4 h-4 mr-1 md:mr-2" />
+                    Logout
+                  </Button>
+                </>
+              )}
+            </div>
+
+          </div>
+          
+          {/* Premium Header Blocks */}
+          <PremiumHeaderBlocks />
+          
+      </div>
+        </div>
+
+      {/* Main Content */}
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 bg-white shadow-sm">
+          <TabsList className="grid w-full grid-cols-5 lg:grid-cols-5">
             <TabsTrigger value="overview" className="flex items-center gap-2">
               <User className="w-4 h-4" />
-              <span className="hidden sm:inline">Overview</span>
+              <span className="hidden sm:block">Overview</span>
             </TabsTrigger>
             <TabsTrigger value="preferences" className="flex items-center gap-2">
               <Heart className="w-4 h-4" />
-              <span className="hidden sm:inline">Preferences</span>
+              <span className="hidden sm:block">Preferences</span>
             </TabsTrigger>
             <TabsTrigger value="orders" className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4" />
-              <span className="hidden sm:inline">Orders</span>
+              <span className="hidden sm:block">Orders</span>
             </TabsTrigger>
             <TabsTrigger value="loyalty" className="flex items-center gap-2">
               <Award className="w-4 h-4" />
-              <span className="hidden sm:inline">Loyalty</span>
+              <span className="hidden sm:block">Loyalty</span>
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2">
               <Settings className="w-4 h-4" />
-              <span className="hidden sm:inline">Settings</span>
+              <span className="hidden sm:block">Settings</span>
             </TabsTrigger>
           </TabsList>
 
@@ -399,49 +395,16 @@ const handleProfileUpdate = async (updates) => {
               {/* Personal Information */}
               <Card>
                 <CardHeader>
-                  <div className="flex items-center justify-between w-full">
-                    <CardTitle className="flex items-center gap-2">
-                      <User className="w-5 h-5" />
-                      Personal Information
-                    </CardTitle>
-                    <div className="flex gap-2">
-                      {isEditingPersonal ? (
-                        <>
-                          <Button
-                            onClick={() => setIsEditingPersonal(false)}
-                            variant="outline"
-                            size="sm"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={handleSave}
-                            disabled={saving}
-                            size="sm"
-                            className="bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)]"
-                          >
-                            <Save className="w-4 h-4 mr-1" />
-                            {saving ? 'Saving...' : 'Save'}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          onClick={() => setIsEditingPersonal(true)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <Edit2 className="w-4 h-4 mr-1" />
-                          Edit
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                  <CardTitle className="flex items-center gap-2">
+                    <User className="w-5 h-5" />
+                    Personal Information
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="name">Full Name</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="name"
                           value={customerData.name || ''}
@@ -454,7 +417,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="email">Email</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="email"
                           type="email"
@@ -468,7 +431,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="secondary_email">Secondary Email</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="secondary_email"
                           type="email"
@@ -480,7 +443,7 @@ const handleProfileUpdate = async (updates) => {
                       ) : (
                         <p className="mt-1 text-gray-700 break-all">{customerData.secondary_email || 'Not provided'}</p>
                       )}
-
+                      
                       {/* Primary Email Switch - only show if secondary email exists */}
                       {customerData.secondary_email && (
                         <div className="mt-3 flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -489,7 +452,7 @@ const handleProfileUpdate = async (updates) => {
                               Use secondary email for communications
                             </Label>
                             <p className="text-xs text-gray-500 mt-1">
-                              {customerData.primary_email_for_communication === 'secondary'
+                              {customerData.primary_email_for_communication === 'secondary' 
                                 ? `Using: ${customerData.secondary_email}`
                                 : `Using: ${customerData.email}`}
                             </p>
@@ -499,7 +462,7 @@ const handleProfileUpdate = async (updates) => {
                             checked={customerData.primary_email_for_communication === 'secondary'}
                             onCheckedChange={(checked) => {
                               setCustomerData({
-                                ...customerData,
+                                ...customerData, 
                                 primary_email_for_communication: checked ? 'secondary' : 'primary'
                               });
                             }}
@@ -509,7 +472,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="phone">Phone</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="phone"
                           value={customerData.phone || ''}
@@ -522,7 +485,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="date_of_birth">Date of Birth</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="date_of_birth"
                           type="date"
@@ -535,90 +498,9 @@ const handleProfileUpdate = async (updates) => {
                       )}
                     </div>
                   </div>
-
-                  {/* NEW FIELDS: Language, Nationality, Ethnicity */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
-                    <div>
-                      <Label htmlFor="language">Language</Label>
-                      {isEditingPersonal ? (
-                        <Select
-                          value={customerData.language || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, language: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select language" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LANGUAGES.map((lang) => (
-                              <SelectItem key={lang.code} value={lang.code}>
-                                {lang.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.language
-                            ? LANGUAGES.find(l => l.code === customerData.language)?.name || customerData.language
-                            : 'Not provided'}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="nationality">Nationality</Label>
-                      {isEditingPersonal ? (
-                        <Select
-                          value={customerData.nationality || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, nationality: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select nationality" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {NATIONALITIES.map((nat) => (
-                              <SelectItem key={nat.code} value={nat.code}>
-                                {nat.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.nationality
-                            ? NATIONALITIES.find(n => n.code === customerData.nationality)?.name || customerData.nationality
-                            : 'Not provided'}
-                        </p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="ethnicity">Ethnicity</Label>
-                      {isEditingPersonal ? (
-                        <Select
-                          value={customerData.ethnicity || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, ethnicity: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select ethnicity" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ETHNICITIES.map((eth) => (
-                              <SelectItem key={eth} value={eth}>
-                                {eth}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.ethnicity || 'Not provided'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
                   <div>
                     <Label htmlFor="address">Address</Label>
-                    {isEditingPersonal ? (
+                    {isEditing ? (
                       <Input
                         id="address"
                         value={customerData.address || ''}
@@ -632,7 +514,7 @@ const handleProfileUpdate = async (updates) => {
                   <div className="grid grid-cols-3 gap-4">
                     <div>
                       <Label htmlFor="city">City</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="city"
                           value={customerData.city || ''}
@@ -645,7 +527,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="postal_code">Postal Code</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="postal_code"
                           value={customerData.postal_code || ''}
@@ -658,7 +540,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                     <div>
                       <Label htmlFor="country">Country</Label>
-                      {isEditingPersonal ? (
+                      {isEditing ? (
                         <Input
                           id="country"
                           value={customerData.country || ''}
@@ -674,8 +556,9 @@ const handleProfileUpdate = async (updates) => {
               </Card>
 
             </div>
-            {/* Family Members */}
 
+            {/* Family Members */}
+            
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -736,20 +619,15 @@ const handleProfileUpdate = async (updates) => {
               </Card>
           </TabsContent>
           <TabsContent value="preferences" className="space-y-6">
-            <MeatPreferences
-              profile={customerData}
+            <MeatPreferences 
+              preferences={customerData} 
               onChange={setCustomerData}
-              isEditing={isEditingPreferences}
-              onEditToggle={() => setIsEditingPreferences(!isEditingPreferences)}
-              onSave={handleSave}
-	      onUpdate={handleProfileUpdate} 
-              saving={saving}
+              isEditing={isEditing}
             />
-            <CulinaryProfile
-              profile={customerData}
+            <CulinaryProfile 
+              preferences={customerData} 
               onChange={setCustomerData}
-	      onUpdate={handleProfileUpdate} 
-              isEditing={isEditingPreferences}
+              isEditing={isEditing}
             />
           </TabsContent>
 
@@ -771,23 +649,23 @@ const handleProfileUpdate = async (updates) => {
                 {/* Products List - Shopify Style */}
                 <div className="space-y-4 mb-6">
                   {recommendedOrder.map((item) => (
-                    <div
-                      key={item.id}
+                    <div 
+                      key={item.id} 
                       className={`flex flex-col md:flex-row gap-4 p-4 rounded-lg border-2 transition-all hover:shadow-md ${
-                        item.is_recommended
-                          ? 'border-purple-300 bg-purple-50/50'
+                        item.is_recommended 
+                          ? 'border-purple-300 bg-purple-50/50' 
                           : 'border-gray-200 bg-white'
                       }`}
                     >
                       {/* Product Image - Fixed aspect ratio */}
                       <div className="flex-shrink-0 w-full md:w-auto">
-                        <img
-                          src={item.image_url}
+                        <img 
+                          src={item.image_url} 
                           alt={item.product_name}
                           className="w-full md:w-24 h-48 md:h-24 object-cover rounded-lg"
                         />
                       </div>
-
+                      
                       {/* Product Details */}
                       <div className="flex-grow">
                         <div className="flex items-start justify-between gap-2">
@@ -803,16 +681,16 @@ const handleProfileUpdate = async (updates) => {
                           </div>
                         </div>
                       </div>
-
+                      
                       {/* Quantity Controls */}
                       <div className="flex flex-row sm:flex-col items-center justify-between sm:justify-center gap-3">
                         <div className="flex items-center gap-2 border-2 border-gray-300 rounded-lg">
                           <button
                             className="px-3 py-2 hover:bg-gray-100 transition-colors"
                             onClick={() => {
-                              const newOrder = recommendedOrder.map(i =>
-                                i.id === item.id && i.quantity > 1
-                                  ? {...i, quantity: i.quantity - 1}
+                              const newOrder = recommendedOrder.map(i => 
+                                i.id === item.id && i.quantity > 1 
+                                  ? {...i, quantity: i.quantity - 1} 
                                   : i
                               );
                               setRecommendedOrder(newOrder);
@@ -824,9 +702,9 @@ const handleProfileUpdate = async (updates) => {
                           <button
                             className="px-3 py-2 hover:bg-gray-100 transition-colors"
                             onClick={() => {
-                              const newOrder = recommendedOrder.map(i =>
-                                i.id === item.id
-                                  ? {...i, quantity: i.quantity + 1}
+                              const newOrder = recommendedOrder.map(i => 
+                                i.id === item.id 
+                                  ? {...i, quantity: i.quantity + 1} 
                                   : i
                               );
                               setRecommendedOrder(newOrder);
@@ -835,7 +713,7 @@ const handleProfileUpdate = async (updates) => {
                             +
                           </button>
                         </div>
-
+                        
                         {/* Price and Delete */}
                         <div className="flex items-center gap-3">
                           <span className="font-bold text-lg whitespace-nowrap">
@@ -856,7 +734,7 @@ const handleProfileUpdate = async (updates) => {
                     </div>
                   ))}
                 </div>
-
+                
                 {/* Total and Order Button */}
                 <div className="border-t-2 border-amber-200 pt-4">
                   <div className="flex justify-between items-center mb-4">
@@ -865,8 +743,8 @@ const handleProfileUpdate = async (updates) => {
                       €{recommendedOrder.reduce((sum, item) => sum + (parseFloat(item.price) * item.quantity), 0).toFixed(2)}
                     </span>
                   </div>
-
-                  <Button
+                  
+                  <Button 
                     className="w-full bg-gradient-to-r from-[oklch(0.35_0.12_15)] to-amber-700 hover:from-[oklch(0.30_0.12_15)] hover:to-amber-800 text-white text-lg py-6 shadow-lg hover:shadow-xl transition-all"
                     onClick={() => {
                       const cartParams = recommendedOrder.map((item, index) =>
@@ -880,7 +758,7 @@ const handleProfileUpdate = async (updates) => {
                     Order in Shopify
                     <ExternalLink className="w-5 h-5 ml-2" />
                   </Button>
-
+                  
                   <p className="text-xs text-center text-gray-500 mt-3">
                     You'll be redirected to our Shopify store with all items in your cart
                   </p>
@@ -889,9 +767,57 @@ const handleProfileUpdate = async (updates) => {
             </Card>
           )}
 
-         <OrdersSection orders={orders} />
-  
 
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  Recent Orders
+                </CardTitle>
+                <CardDescription>Your order history and tracking</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {orders && orders.length > 0 ? (
+                  <div className="space-y-4">
+                    {orders.map((order) => (
+                      <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-semibold text-lg">{order.order_number}</h4>
+                            <p className="text-sm text-gray-600">{formatDate(order.order_date)}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                            <p className="text-lg font-bold mt-1">{formatCurrency(order.total_amount)}</p>
+                          </div>
+                        </div>
+                        {order.items && (
+                          <div className="space-y-2">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-gray-700">{item.name} × {item.quantity}</span>
+                                <span className="text-gray-900 font-medium">{formatCurrency(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {order.tracking_number && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs text-gray-500">Tracking: {order.tracking_number}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No orders yet</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Active Subscriptions */}
             {subscriptions && subscriptions.length > 0 && (
@@ -992,55 +918,18 @@ const handleProfileUpdate = async (updates) => {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-6">
-
+            
             {/* Delivery Instructions */}
-
-
-<Card>
+            <Card>
               <CardHeader>
-                <div className="flex items-center justify-between w-full">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5" />
-                      Delivery Instructions
-                    </CardTitle>
-                    <CardDescription>Special instructions for delivery</CardDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    {isEditingSettings ? (
-                      <>
-                        <Button
-                          onClick={() => setIsEditingSettings(false)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          onClick={handleSave}
-                          disabled={saving}
-                          size="sm"
-                          className="bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)]"
-                        >
-                          <Save className="w-4 h-4 mr-1" />
-                          {saving ? 'Saving...' : 'Save'}
-                        </Button>
-                      </>
-                    ) : (
-                      <Button
-                        onClick={() => setIsEditingSettings(true)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <Edit2 className="w-4 h-4 mr-1" />
-                        Edit
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Delivery Instructions
+                </CardTitle>
+                <CardDescription>Special instructions for delivery</CardDescription>
               </CardHeader>
               <CardContent>
-                {isEditingSettings ? (
+                {isEditing ? (
                   <textarea
                     value={customerData.delivery_instructions || ''}
                     onChange={(e) => setCustomerData({...customerData, delivery_instructions: e.target.value})}
@@ -1076,10 +965,10 @@ const handleProfileUpdate = async (updates) => {
                   <Switch
                     checked={customerData.marketing_communications}
                     onCheckedChange={(checked) => setCustomerData({...customerData, marketing_communications: checked})}
-                    disabled={!isEditingSettings}
+                    disabled={!isEditing}
                   />
                 </div>
-
+                
                 <div className="flex items-center justify-between">
                   <div className="flex items-start gap-3">
                     <TrendingUp className="w-5 h-5 text-purple-600 mt-1" />
@@ -1091,7 +980,7 @@ const handleProfileUpdate = async (updates) => {
                   <Switch
                     checked={customerData.marketing_personalization}
                     onCheckedChange={(checked) => setCustomerData({...customerData, marketing_personalization: checked})}
-                    disabled={!isEditingSettings}
+                    disabled={!isEditing}
                   />
                 </div>
               </CardContent>
@@ -1115,7 +1004,7 @@ const handleProfileUpdate = async (updates) => {
                   <Download className="w-4 h-4 mr-2" />
                   Download All My Data
                 </Button>
-
+                
                 <Button
                   onClick={() => {
                     if (confirm('Are you sure you want to delete your profile and all data? This action cannot be undone.')) {

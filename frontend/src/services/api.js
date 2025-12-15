@@ -1,5 +1,5 @@
 // frontend/src/services/api.js
-import { getUserToken } from '../firebase';
+import { getUserTokenNew as getUserToken } from '../firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 

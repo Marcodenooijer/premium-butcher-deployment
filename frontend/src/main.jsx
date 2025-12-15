@@ -4,6 +4,9 @@ import { AuthProvider } from './contexts/AuthContext'
 import AuthenticatedApp from './AuthenticatedApp'
 import './index.css'
 
+// Import i18n configuration
+import './i18n/config'
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <AuthProvider>

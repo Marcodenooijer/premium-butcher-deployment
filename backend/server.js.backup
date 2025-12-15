@@ -224,9 +224,9 @@ app.post('/api/profile/family', authenticateUser, async (req, res) => {
     
     const result = await pool.query(
       `INSERT INTO family_members (customer_id, name, relationship, age, dietary_requirements)
-       VALUES ($1, $2, $3, $4, $5::jsonb)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [customerId, name, relationship, age, JSON.stringify(dietary_requirements)]
+      [customerId, name, relationship, age, dietary_requirements]
     );
     
     res.status(201).json(result.rows[0]);
@@ -495,7 +495,7 @@ app.get('/api/header/rewards', authenticateUser, async (req, res) => {
 app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title, content, tip_type, icon, product_link 
+      `SELECT id, title, content, tip_type, icon 
        FROM tips 
        WHERE is_active = true 
        ORDER BY RANDOM() 

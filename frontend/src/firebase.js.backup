@@ -104,29 +104,3 @@ export const getUserToken = async () => {
 };
 
 export default app;
-
-// Better implementation that waits for auth state
-export const waitForAuthReady = () => {
-  return new Promise((resolve) => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      unsubscribe();
-      resolve(user);
-    });
-  });
-};
-
-// Updated getUserToken that waits for auth
-export const getUserTokenNew = async () => {
-  // First check currentUser
-  let user = auth.currentUser;
-  
-  // If no currentUser, wait for auth state
-  if (!user) {
-    user = await waitForAuthReady();
-  }
-  
-  if (user) {
-    return await user.getIdToken();
-  }
-  return null;
-};

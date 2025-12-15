@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import api, { getRecommendedOrder } from './services/api';
 import { useAuth } from './contexts/AuthContext';
-import OrdersSection from './components/OrdersSection';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,7 +44,7 @@ import {
 } from 'lucide-react';
 import './App.css';
 
-import Header from './components/Header';
+import PremiumHeaderBlocks from './components/PremiumHeaderBlocks';
 import MeatPreferences from './components/MeatPreferences';
 import CulinaryProfile from './components/CulinaryProfile';
 
@@ -110,14 +109,35 @@ const NATIONALITIES = [
 
 // Common European Ethnicities
 const ETHNICITIES = [
-  'Western European',
-  'Southern European',
-  'Eastern European',
-  'East Asian',
-  'Middle Eastern & North African',
-  'South Asian',
-  'West African',
-  'Latin America',
+  'Dutch',
+  'Belgian',
+  'German',
+  'French',
+  'British',
+  'Spanish',
+  'Italian',
+  'Portuguese',
+  'Polish',
+  'Romanian',
+  'Greek',
+  'Swedish',
+  'Danish',
+  'Finnish',
+  'Norwegian',
+  'Czech',
+  'Hungarian',
+  'Bulgarian',
+  'Slovak',
+  'Croatian',
+  'Turkish',
+  'Moroccan',
+  'Algerian',
+  'Syrian',
+  'Iraqi',
+  'Kurdish',
+  'Berber',
+  'Roma',
+  'Jewish',
   'Mixed/Multiple',
   'Other',
   'Prefer not to say',
@@ -198,37 +218,6 @@ function App() {
       setSaving(false);
     }
   };
-
-const handleProfileUpdate = async (updates) => {
-  try {
-    setSaving(true);
-    
-    // Merge updates with existing customer data
-    const updatedData = {
-      ...customerData,
-      ...updates
-    };
-    
-    // Update local state immediately for UI responsiveness
-    setCustomerData(updatedData);
-    
-    // Save to API
-    const response = await api.updateProfile(updatedData);
-    setCustomerData(response);
-    
-    // Show success message
-    console.log('✅ Preferences updated successfully!');
-    
-  } catch (err) {
-    console.error('Error updating preferences:', err);
-    // Revert to previous state on error
-    await loadAllData();
-    alert(`❌ Failed to update preferences: ${err.message}`);
-  } finally {
-    setSaving(false);
-  }
-};
-
 
   const handleDownload = () => {
     const dataStr = JSON.stringify(customerData, null, 2);
@@ -364,8 +353,57 @@ const handleProfileUpdate = async (updates) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* New Header Component */}
-      <Header customerData={customerData} onLogout={handleLogout} />
+      {/* Header */}
+      <div className="bg-gradient-to-br from-[oklch(0.35_0.12_15)] via-[oklch(0.38_0.14_20)] to-[oklch(0.42_0.10_10)] relative overflow-hidden text-white">
+        {/* Premium decorative overlay */}
+        <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-black/10 pointer-events-none"></div>
+        <div className="absolute inset-0 opacity-10 pointer-events-none" style={{backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.08) 0%, transparent 50%)'}}></div>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="flex justify-between items-start">
+            <div>
+              <h1 className="text-3xl font-bold mb-2">{customerData.name}</h1>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-white/90">
+                <span className="flex items-center gap-1">
+                  <Mail className="w-4 h-4" />
+                  {customerData.email}
+                </span>
+                {customerData.phone && (
+                  <span className="flex items-center gap-1">
+                    <Phone className="w-4 h-4" />
+                    {customerData.phone}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDownload}
+                className="bg-white/10 hover:bg-white/20 text-white border-white/30 text-sm md:text-base px-3 md:px-4"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download Data
+              </Button>
+              <Button
+                onClick={handleLogout}
+                className="bg-red-500/80 hover:bg-red-600 text-white text-sm md:text-base px-3 md:px-4"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Logout
+              </Button>
+            </div>
+          </div>
+
+          {/* Premium Header Blocks */}
+          <PremiumHeaderBlocks
+            loyaltyTier={customerData.loyalty_tier}
+            loyaltyPoints={customerData.loyalty_points}
+            totalSpent={customerData.total_spent}
+            ordersCount={orders.length}
+            subscriptionsCount={subscriptions.length}
+            sustainabilityScore={sustainabilityData?.sustainability_score}
+          />
+        </div>
+      </div>
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -558,7 +596,7 @@ const handleProfileUpdate = async (updates) => {
                         </Select>
                       ) : (
                         <p className="mt-1 text-gray-700">
-                          {customerData.language
+                          {customerData.language 
                             ? LANGUAGES.find(l => l.code === customerData.language)?.name || customerData.language
                             : 'Not provided'}
                         </p>
@@ -584,7 +622,7 @@ const handleProfileUpdate = async (updates) => {
                         </Select>
                       ) : (
                         <p className="mt-1 text-gray-700">
-                          {customerData.nationality
+                          {customerData.nationality 
                             ? NATIONALITIES.find(n => n.code === customerData.nationality)?.name || customerData.nationality
                             : 'Not provided'}
                         </p>
@@ -737,18 +775,16 @@ const handleProfileUpdate = async (updates) => {
           </TabsContent>
           <TabsContent value="preferences" className="space-y-6">
             <MeatPreferences
-              profile={customerData}
+              preferences={customerData}
               onChange={setCustomerData}
               isEditing={isEditingPreferences}
               onEditToggle={() => setIsEditingPreferences(!isEditingPreferences)}
               onSave={handleSave}
-	      onUpdate={handleProfileUpdate} 
               saving={saving}
             />
             <CulinaryProfile
-              profile={customerData}
+              preferences={customerData}
               onChange={setCustomerData}
-	      onUpdate={handleProfileUpdate} 
               isEditing={isEditingPreferences}
             />
           </TabsContent>
@@ -889,9 +925,57 @@ const handleProfileUpdate = async (updates) => {
             </Card>
           )}
 
-         <OrdersSection orders={orders} />
-  
 
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  Recent Orders
+                </CardTitle>
+                <CardDescription>Your order history and tracking</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {orders && orders.length > 0 ? (
+                  <div className="space-y-4">
+                    {orders.map((order) => (
+                      <div key={order.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-semibold text-lg">{order.order_number}</h4>
+                            <p className="text-sm text-gray-600">{formatDate(order.order_date)}</p>
+                          </div>
+                          <div className="text-right">
+                            <Badge className={getStatusColor(order.status)}>{order.status}</Badge>
+                            <p className="text-lg font-bold mt-1">{formatCurrency(order.total_amount)}</p>
+                          </div>
+                        </div>
+                        {order.items && (
+                          <div className="space-y-2">
+                            {order.items.map((item, idx) => (
+                              <div key={idx} className="flex justify-between text-sm">
+                                <span className="text-gray-700">{item.name} × {item.quantity}</span>
+                                <span className="text-gray-900 font-medium">{formatCurrency(item.price)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {order.tracking_number && (
+                          <div className="mt-3 pt-3 border-t">
+                            <p className="text-xs text-gray-500">Tracking: {order.tracking_number}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No orders yet</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
             {/* Active Subscriptions */}
             {subscriptions && subscriptions.length > 0 && (
@@ -994,18 +1078,15 @@ const handleProfileUpdate = async (updates) => {
           <TabsContent value="settings" className="space-y-6">
 
             {/* Delivery Instructions */}
-
-
-<Card>
+            
+            {/* Settings Header with Edit Button */}
+            <Card>
               <CardHeader>
                 <div className="flex items-center justify-between w-full">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5" />
-                      Delivery Instructions
-                    </CardTitle>
-                    <CardDescription>Special instructions for delivery</CardDescription>
-                  </div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="w-5 h-5" />
+                    Settings
+                  </CardTitle>
                   <div className="flex gap-2">
                     {isEditingSettings ? (
                       <>
@@ -1038,6 +1119,16 @@ const handleProfileUpdate = async (updates) => {
                     )}
                   </div>
                 </div>
+              </CardHeader>
+            </Card>
+
+<Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Delivery Instructions
+                </CardTitle>
+                <CardDescription>Special instructions for delivery</CardDescription>
               </CardHeader>
               <CardContent>
                 {isEditingSettings ? (
