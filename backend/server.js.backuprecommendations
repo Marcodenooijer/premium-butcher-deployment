@@ -1,0 +1,879 @@
+// backend/server.js
+// Express.js backend with Firebase authentication
+
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const { Pool } = require('pg');
+const admin = require('firebase-admin');
+const bwipjs = require('bwip-js');
+const googleWallet = require('./googleWalletService');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// Initialize Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert({
+    projectId: process.env.FIREBASE_PROJECT_ID,
+    clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+    privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+  })
+});
+
+// PostgreSQL connection
+const pool = new Pool({
+  host: process.env.DB_HOST || 'postgres',
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || 'premium_butcher',
+  user: process.env.DB_USER || 'butcher_user',
+  password: process.env.DB_PASSWORD,
+});
+
+// Test database connection
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error('❌ Database connection error:', err);
+  } else {
+    console.log(`✅ Database connected at: ${new Date().toISOString()}`);
+    release();
+  }
+});
+
+// Initialize Google Wallet loyalty class on startup
+(async () => {
+  try {
+    await googleWallet.createOrUpdateLoyaltyClass();
+    console.log('✅ Google Wallet loyalty class initialized');
+  } catch (error) {
+    console.error('⚠️  Google Wallet initialization failed:', error.message);
+    console.error('   Google Wallet passes will not be available');
+  }
+})();
+
+// ============================================
+// EAN-13 BARCODE HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Calculate EAN-13 check digit
+ * @param {string} code12 - First 12 digits of EAN-13
+ * @returns {string} - Check digit (0-9)
+ */
+function calculateEAN13CheckDigit(code12) {
+  // Ensure code12 is exactly 12 characters
+  if (code12.length !== 12) {
+    console.error('Invalid code12 length:', code12.length, 'value:', code12);
+    throw new Error('code12 must be exactly 12 digits');
+  }
+
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const char = code12.charAt(i);
+    const digit = parseInt(char, 10);
+
+    // Check if digit is valid
+    if (isNaN(digit)) {
+      console.error('Invalid digit at position', i, ':', char);
+      throw new Error(`Invalid digit at position ${i}: ${char}`);
+    }
+
+    sum += (i % 2 === 0) ? digit : digit * 3;
+  }
+
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return checkDigit.toString();
+}
+
+/**
+ * Generate unique EAN-13 barcode for customer
+ * Pattern: 1563 99 XXXXX C (where C is check digit)
+ * @param {number} customerId - Customer database ID
+ * @returns {string} - Complete 13-digit EAN-13 barcode
+ */
+function generateEAN13Barcode(customerId) {
+  // Prefix: 1563 99
+  const prefix = '156399';
+
+  // Generate 6-digit unique number from customer ID
+  // Pad with zeros if needed, take last 6 digits if too long
+  const uniquePart = customerId.toString().padStart(6, '0').slice(-6);
+
+  // Combine prefix + unique part (12 digits total)
+  const code12 = prefix + uniquePart;
+
+  // Calculate check digit
+  const checkDigit = calculateEAN13CheckDigit(code12);
+
+  // Return complete EAN-13
+  return code12 + checkDigit;
+}
+
+/**
+ * Get or create EAN-13 barcode for customer
+ * @param {number} customerId - Customer database ID
+ * @param {string} firebaseUid - Firebase UID
+ * @returns {Promise<string>} - EAN-13 barcode
+ */
+async function getOrCreateEAN13(customerId, firebaseUid) {
+  // Check if customer already has an EAN-13 barcode
+  const result = await pool.query(
+    'SELECT ean13_barcode FROM customers WHERE id = $1',
+    [customerId]
+  );
+
+  if (result.rows[0].ean13_barcode) {
+    return result.rows[0].ean13_barcode;
+  }
+
+  // Generate new EAN-13 barcode
+  const ean13 = generateEAN13Barcode(customerId);
+
+  // Save to database
+  await pool.query(
+    'UPDATE customers SET ean13_barcode = $1 WHERE id = $2',
+    [ean13, customerId]
+  );
+
+  return ean13;
+}
+
+// ============================================
+// AUTHENTICATION MIDDLEWARE
+// ============================================
+
+const authenticateUser = async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No authorization token provided' });
+    }
+
+    const idToken = authHeader.split('Bearer ')[1];
+
+    // Verify the Firebase ID token
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+
+    // Attach user info to request
+    req.user = {
+      firebaseUid: decodedToken.uid,
+      email: decodedToken.email,
+      name: decodedToken.name,
+      picture: decodedToken.picture,
+    };
+
+    next();
+  } catch (error) {
+    console.error('Authentication error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+};
+
+// ============================================
+// PUBLIC ENDPOINTS (No auth required)
+// ============================================
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: pool.totalCount > 0 ? 'connected' : 'disconnected',
+    firebase: 'initialized'
+  });
+});
+
+// ============================================
+// PROTECTED ENDPOINTS (Auth required)
+// ============================================
+
+// Get current user's profile
+app.get('/api/profile', authenticateUser, async (req, res) => {
+  try {
+    // First, try to find by firebase_uid
+    let result = await pool.query(
+      'SELECT * FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (result.rows.length === 0) {
+      // No profile with this firebase_uid, check if email exists
+      const emailCheck = await pool.query(
+        'SELECT * FROM customers WHERE email = $1',
+        [req.user.email]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        // Profile exists with this email but different firebase_uid
+        // Update the firebase_uid to link this auth method
+        result = await pool.query(
+          'UPDATE customers SET firebase_uid = $1 WHERE email = $2 RETURNING *',
+          [req.user.firebaseUid, req.user.email]
+        );
+        return res.json(result.rows[0]);
+      }
+
+      // No profile exists at all - create new one
+      const newProfile = await pool.query(
+        `INSERT INTO customers (firebase_uid, email, name, member_since)
+         VALUES ($1, $2, $3, NOW())
+         RETURNING *`,
+        [req.user.firebaseUid, req.user.email, req.user.name]
+      );
+      return res.json(newProfile.rows[0]);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching profile:', error);
+    res.status(500).json({ error: 'Failed to fetch profile' });
+  }
+});
+
+// Update current user's profile
+app.put('/api/profile', authenticateUser, async (req, res) => {
+  try {
+    const updates = req.body;
+
+    // Remove fields that shouldn't be updated
+    delete updates.id;
+    delete updates.firebase_uid;
+    delete updates.member_since;
+    delete updates.created_at;
+    delete updates.updated_at;
+    delete updates.ean13_barcode; // Don't allow manual barcode updates
+
+    // Build dynamic UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(req.user.firebaseUid);
+
+    const query = `
+      UPDATE customers
+      SET ${setClause}, updated_at = NOW()
+      WHERE firebase_uid = $${values.length}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Profile not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Get current user's family members
+app.get('/api/profile/family', authenticateUser, async (req, res) => {
+  try {
+    // First get customer ID from firebase_uid
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      'SELECT * FROM family_members WHERE customer_id = $1 ORDER BY id',
+      [customerId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching family members:', error);
+    res.status(500).json({ error: 'Failed to fetch family members' });
+  }
+});
+
+// Add family member
+app.post('/api/profile/family', authenticateUser, async (req, res) => {
+  try {
+    const { name, relationship, age, dietary_requirements } = req.body;
+
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer profile not found' });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      `INSERT INTO family_members (customer_id, name, relationship, age, dietary_requirements)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
+       RETURNING *`,
+      [customerId, name, relationship, age, JSON.stringify(dietary_requirements)]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (error) {
+    console.error('Error adding family member:', error);
+    res.status(500).json({ error: 'Failed to add family member' });
+  }
+});
+
+// Update family member
+app.put('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
+  try {
+    const { memberId } = req.params;
+    const updates = req.body;
+
+    // Verify this family member belongs to the authenticated user
+    const verifyResult = await pool.query(
+      `SELECT fm.* FROM family_members fm
+       JOIN customers c ON fm.customer_id = c.id
+       WHERE fm.id = $1 AND c.firebase_uid = $2`,
+      [memberId, req.user.firebaseUid]
+    );
+
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Family member not found' });
+    }
+
+    // Build UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const setClause = fields.map((field, index) => {
+      if (field === 'dietary_requirements') {
+        return `${field} = $${index + 1}::jsonb`;
+      }
+      return `${field} = $${index + 1}`;
+    }).join(', ');
+
+    // Convert dietary_requirements to JSON string if present
+    const processedValues = values.map((value, index) => {
+      if (fields[index] === 'dietary_requirements') {
+        return JSON.stringify(value);
+      }
+      return value;
+    });
+
+    processedValues.push(memberId);
+
+    const query = `
+      UPDATE family_members
+      SET ${setClause}
+      WHERE id = $${processedValues.length}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, processedValues);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating family member:', error);
+    res.status(500).json({ error: 'Failed to update family member' });
+  }
+});
+
+// Delete family member
+app.delete('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
+  try {
+    const { memberId } = req.params;
+
+    // Verify this family member belongs to the authenticated user
+    const verifyResult = await pool.query(
+      `SELECT fm.* FROM family_members fm
+       JOIN customers c ON fm.customer_id = c.id
+       WHERE fm.id = $1 AND c.firebase_uid = $2`,
+      [memberId, req.user.firebaseUid]
+    );
+
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Family member not found' });
+    }
+
+    await pool.query('DELETE FROM family_members WHERE id = $1', [memberId]);
+
+    res.json({ success: true, message: 'Family member deleted' });
+  } catch (error) {
+    console.error('Error deleting family member:', error);
+    res.status(500).json({ error: 'Failed to delete family member' });
+  }
+});
+
+// Get current user's orders
+app.get('/api/profile/orders', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      `SELECT * FROM orders
+       WHERE customer_id = $1
+       ORDER BY order_date DESC
+       LIMIT 10`,
+      [customerId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
+// Get recommended order based on purchase history
+app.get('/api/profile/recommended-order', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json({ items: [] });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    // Get most frequently ordered items
+    // Get most frequently ordered items from the orders table
+// (orders table already contains product_name and quantity)
+const result = await pool.query(
+  `SELECT 
+    product_name, 
+    COUNT(*) as order_count, 
+    AVG(quantity) as avg_quantity,
+    SUM(quantity) as total_quantity,
+    MAX(order_date) as last_ordered
+   FROM orders
+   WHERE customer_id = $1
+   GROUP BY product_name
+   ORDER BY order_count DESC, total_quantity DESC
+   LIMIT 5`,
+  [customerId]
+);
+
+
+    res.json({ items: result.rows });
+     } catch (error) {
+    console.error('Error fetching recommended order:', error);
+    
+    // Check if error is due to missing table
+    if (error.code === '42P01') {
+      // Table doesn't exist - return empty array instead of error
+      console.log('order_items table does not exist, returning empty recommendations');
+      return res.json({ items: [] });
+    }
+    
+    // For other errors, return 500
+    res.status(500).json({ error: 'Failed to fetch recommended order' });
+  }
+});
+
+// Get current user's subscriptions
+app.get('/api/profile/subscriptions', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      'SELECT * FROM subscriptions WHERE customer_id = $1 ORDER BY start_date DESC',
+      [customerId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching subscriptions:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriptions' });
+  }
+});
+
+// Update subscription
+app.put('/api/profile/subscriptions/:subscriptionId', authenticateUser, async (req, res) => {
+  try {
+    const { subscriptionId } = req.params;
+    const updates = req.body;
+
+    // Verify subscription belongs to user
+    const verifyResult = await pool.query(
+      `SELECT s.* FROM subscriptions s
+       JOIN customers c ON s.customer_id = c.id
+       WHERE s.id = $1 AND c.firebase_uid = $2`,
+      [subscriptionId, req.user.firebaseUid]
+    );
+
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    // Build UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(subscriptionId);
+
+    const query = `
+      UPDATE subscriptions
+      SET ${setClause}
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    res.status(500).json({ error: 'Failed to update subscription' });
+  }
+});
+
+// ============================================
+// BARCODE ENDPOINT (EAN-13)
+// ============================================
+
+// Generate EAN-13 barcode for current user
+app.get('/api/barcode', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    // Get or create EAN-13 barcode
+    const ean13 = await getOrCreateEAN13(customerId, req.user.firebaseUid);
+
+    // Generate the barcode image
+    const png = await bwipjs.toBuffer({
+      bcid: 'ean13',         // EAN-13 barcode type
+      text: ean13,           // 13-digit barcode
+      scale: 3,              // 3x scaling factor
+      height: 10,            // Bar height, in millimeters
+      includetext: true,     // Show human-readable text
+      textxalign: 'center',  // Center align text
+    });
+
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': png.length,
+    });
+    res.end(png);
+  } catch (error) {
+    console.error('Error generating barcode:', error);
+    res.status(500).json({ error: 'Failed to generate barcode' });
+  }
+});
+
+// ============================================
+// GOOGLE WALLET ENDPOINTS
+// ============================================
+
+/**
+ * Generate Google Wallet pass for current user
+ * Returns a "Add to Google Wallet" URL
+ */
+app.get('/api/google-wallet/pass', authenticateUser, async (req, res) => {
+  try {
+    // Get customer data
+    const customerResult = await pool.query(
+      `SELECT id, name, email, ean13_barcode, loyalty_points, member_since 
+       FROM customers 
+       WHERE firebase_uid = $1`,
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = customerResult.rows[0];
+
+    // Ensure customer has an EAN-13 barcode
+    if (!customer.ean13_barcode) {
+      const ean13 = await getOrCreateEAN13(customer.id, req.user.firebaseUid);
+      customer.ean13_barcode = ean13;
+    }
+
+    // Create/update Google Wallet pass
+    const saveUrl = await googleWallet.createLoyaltyObject({
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      ean13: customer.ean13_barcode,
+      loyaltyPoints: customer.loyalty_points || 0,
+      memberSince: customer.member_since
+    });
+
+    res.json({
+      success: true,
+      saveUrl: saveUrl,
+      message: 'Google Wallet pass generated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error generating Google Wallet pass:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate Google Wallet pass',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update loyalty points in Google Wallet
+ * Called automatically when points change
+ */
+app.post('/api/google-wallet/update-points', authenticateUser, async (req, res) => {
+  try {
+    const { points } = req.body;
+
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    // Update points in Google Wallet
+    await googleWallet.updateLoyaltyPoints(customerId, points);
+
+    res.json({
+      success: true,
+      message: 'Google Wallet pass updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error updating Google Wallet pass:', error);
+    res.status(500).json({ 
+      error: 'Failed to update Google Wallet pass',
+      details: error.message 
+    });
+  }
+});
+
+// ============================================
+// HEADER BLOCKS ENDPOINTS (Auth required)
+// ============================================
+
+// Get customer loyalty points for header
+app.get('/api/header/loyalty-points', authenticateUser, async (req, res) => {
+  try {
+    const customerResult = await pool.query(
+      'SELECT loyalty_points FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json({ points: 0 });
+    }
+
+    res.json({ points: customerResult.rows[0].loyalty_points || 0 });
+  } catch (error) {
+    console.error('Error fetching loyalty points:', error);
+    res.status(500).json({ error: 'Failed to fetch loyalty points' });
+  }
+});
+
+// Get available loyalty rewards for header
+app.get('/api/header/rewards', authenticateUser, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, description, points_required, icon
+       FROM loyalty_rewards
+       WHERE is_available = true
+       ORDER BY points_required ASC
+       LIMIT 5`
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching rewards:', error);
+    res.status(500).json({ error: 'Failed to fetch rewards' });
+  }
+});
+
+// Get random tip of the day for header
+app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, title, content, tip_type, icon, product_link
+       FROM tips
+       WHERE is_active = true
+       ORDER BY RANDOM()
+       LIMIT 1`
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        title: 'Welcome!',
+        content: 'Check back soon for tips and recommendations',
+        tip_type: 'general',
+        icon: 'info'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching tip:', error);
+    res.status(500).json({ error: 'Failed to fetch tip' });
+  }
+});
+
+// Get next upcoming event for header
+app.get('/api/header/next-event', authenticateUser, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, title, description, event_date, event_type, icon
+       FROM events
+       WHERE is_active = true AND event_date >= CURRENT_DATE
+       ORDER BY event_date ASC
+       LIMIT 1`
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        title: 'No upcoming events',
+        description: 'Stay tuned for future events',
+        event_date: null,
+        event_type: 'general',
+        icon: 'calendar'
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching event:', error);
+    res.status(500).json({ error: 'Failed to fetch event' });
+  }
+});
+
+// Get sustainability impact
+app.get('/api/sustainability', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json({
+        co2_saved_kg: 0,
+        local_sourcing_percentage: 0,
+        partner_farms_count: 0,
+        sustainability_score: 0
+      });
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      'SELECT co2_saved_kg, local_sourcing_percentage, partner_farms_count, sustainability_score FROM sustainability_impact WHERE customer_id = $1',
+      [customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        co2_saved_kg: 0,
+        local_sourcing_percentage: 0,
+        partner_farms_count: 0,
+        sustainability_score: 0
+      });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error fetching sustainability:', error);
+    res.status(500).json({ error: 'Failed to fetch sustainability data' });
+  }
+});
+
+
+// START SERVER
+// ============================================
+
+app.listen(PORT, () => {
+  console.log(`
+🚀 Premium Butcher Backend API (with Firebase Auth)
+================================
+📡 Server running on port ${PORT}
+🌍 Environment: ${process.env.NODE_ENV || 'development'}
+🗄️  Database: ${process.env.DB_NAME}
+🔐 Firebase Auth: Enabled
+
+Protected endpoints (require Authorization header):
+  GET  /api/profile
+  PUT  /api/profile
+  GET  /api/profile/family
+  POST /api/profile/family
+  PUT  /api/profile/family/:memberId
+  DEL  /api/profile/family/:memberId
+  GET  /api/profile/orders
+  GET  /api/profile/recommended-order
+  GET  /api/profile/subscriptions
+  PUT  /api/profile/subscriptions/:subscriptionId
+  GET  /api/barcode (EAN-13)
+  GET  /api/google-wallet/pass
+  POST /api/google-wallet/update-points
+
+Public endpoints:
+  GET  /health
+`);
+});
+

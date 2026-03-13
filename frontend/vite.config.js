@@ -28,5 +28,9 @@ export default defineConfig({
         },
       },
     },
+    // Copy service worker to output without processing
+    copyPublicDir: true,
   },
+  // Ensure public files are served correctly
+  publicDir: 'public',
 })

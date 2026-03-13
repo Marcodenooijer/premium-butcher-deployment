@@ -6,6 +6,8 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const admin = require('firebase-admin');
+const bwipjs = require('bwip-js');
+const googleWallet = require('./googleWalletService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +44,105 @@ pool.connect((err, client, release) => {
   }
 });
 
+// Initialize Google Wallet loyalty class on startup
+(async () => {
+  try {
+    await googleWallet.createOrUpdateGenericClass();
+    console.log('✅ Google WalletGenericy class initialized');
+  } catch (error) {
+    console.error('⚠️  Google Wallet initialization failed:', error.message);
+    console.error('   Google Wallet passes will not be available');
+  }
+})();
+
+// ============================================
+// EAN-13 BARCODE HELPER FUNCTIONS
+// ============================================
+
+/**
+ * Calculate EAN-13 check digit
+ * @param {string} code12 - First 12 digits of EAN-13
+ * @returns {string} - Check digit (0-9)
+ */
+function calculateEAN13CheckDigit(code12) {
+  // Ensure code12 is exactly 12 characters
+  if (code12.length !== 12) {
+    console.error('Invalid code12 length:', code12.length, 'value:', code12);
+    throw new Error('code12 must be exactly 12 digits');
+  }
+
+  let sum = 0;
+  for (let i = 0; i < 12; i++) {
+    const char = code12.charAt(i);
+    const digit = parseInt(char, 10);
+
+    // Check if digit is valid
+    if (isNaN(digit)) {
+      console.error('Invalid digit at position', i, ':', char);
+      throw new Error(`Invalid digit at position ${i}: ${char}`);
+    }
+
+    sum += (i % 2 === 0) ? digit : digit * 3;
+  }
+
+  const checkDigit = (10 - (sum % 10)) % 10;
+  return checkDigit.toString();
+}
+
+/**
+ * Generate unique EAN-13 barcode for customer
+/**
+ * Generate unique EAN-13 barcode for customer
+ * New Pattern: 96 001 0000001 C
+ * 96 (Flag) + 001 (StoreID) + 0000001 (7-digit Customer ID) + C (Check Digit)
+ */
+function generateEAN13Barcode(customerId) {
+  // 1. Flag + StoreID (5 digits total: 96 + 001)
+  const prefix = '96001';
+
+  // 2. Generate 7-digit unique number from customer ID (XXXXXXX)
+  // We pad with 7 zeros to ensure it meets the spec
+  const customerPart = customerId.toString().padStart(7, '0');
+
+  // 3. Combine to create the 12-digit base
+  const code12 = prefix + customerPart;
+
+  // 4. Calculate check digit using your existing EAN13 norm function
+  const checkDigit = calculateEAN13CheckDigit(code12);
+
+  // Return complete 13-digit barcode
+  return code12 + checkDigit;
+}
+
+/**
+ * Get or create EAN-13 barcode for customer
+ * @param {number} customerId - Customer database ID
+ * @param {string} firebaseUid - Firebase UID
+ * @returns {Promise<string>} - EAN-13 barcode
+ */
+async function getOrCreateEAN13(customerId, firebaseUid) {
+  // Check if customer already has an EAN-13 barcode
+  const result = await pool.query(
+    'SELECT ean13_barcode FROM customers WHERE id = $1',
+    [customerId]
+  );
+
+  if (result.rows[0].ean13_barcode) {
+    return result.rows[0].ean13_barcode;
+  }
+
+  // Generate new EAN-13 barcode
+  const ean13 = generateEAN13Barcode(customerId);
+
+  // Save to database
+  await pool.query(
+    'UPDATE customers SET ean13_barcode = $1 WHERE id = $2',
+    [ean13, customerId]
+  );
+
+  return ean13;
+}
+
 // ============================================
 // AUTHENTICATION MIDDLEWARE
 // ============================================
@@ -49,16 +150,16 @@ pool.connect((err, client, release) => {
 const authenticateUser = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'No authorization token provided' });
     }
 
     const idToken = authHeader.split('Bearer ')[1];
-    
+
     // Verify the Firebase ID token
     const decodedToken = await admin.auth().verifyIdToken(idToken);
-    
+
     // Attach user info to request
     req.user = {
       firebaseUid: decodedToken.uid,
@@ -66,7 +167,7 @@ const authenticateUser = async (req, res, next) => {
       name: decodedToken.name,
       picture: decodedToken.picture,
     };
-    
+
     next();
   } catch (error) {
     console.error('Authentication error:', error);
@@ -139,38 +240,39 @@ app.get('/api/profile', authenticateUser, async (req, res) => {
 app.put('/api/profile', authenticateUser, async (req, res) => {
   try {
     const updates = req.body;
-    
+
     // Remove fields that shouldn't be updated
     delete updates.id;
     delete updates.firebase_uid;
     delete updates.member_since;
     delete updates.created_at;
     delete updates.updated_at;
-    
+    delete updates.ean13_barcode; // Don't allow manual barcode updates
+
     // Build dynamic UPDATE query
     const fields = Object.keys(updates);
     const values = Object.values(updates);
-    
+
     if (fields.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
-    
+
     const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
     values.push(req.user.firebaseUid);
-    
+
     const query = `
-      UPDATE customers 
+      UPDATE customers
       SET ${setClause}, updated_at = NOW()
       WHERE firebase_uid = $${values.length}
       RETURNING *
     `;
-    
+
     const result = await pool.query(query, values);
-    
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Profile not found' });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating profile:', error);
@@ -186,18 +288,18 @@ app.get('/api/profile/family', authenticateUser, async (req, res) => {
       'SELECT id FROM customers WHERE firebase_uid = $1',
       [req.user.firebaseUid]
     );
-    
+
     if (customerResult.rows.length === 0) {
       return res.json([]);
     }
-    
+
     const customerId = customerResult.rows[0].id;
-    
+
     const result = await pool.query(
       'SELECT * FROM family_members WHERE customer_id = $1 ORDER BY id',
       [customerId]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching family members:', error);
@@ -209,26 +311,26 @@ app.get('/api/profile/family', authenticateUser, async (req, res) => {
 app.post('/api/profile/family', authenticateUser, async (req, res) => {
   try {
     const { name, relationship, age, dietary_requirements } = req.body;
-    
+
     // Get customer ID
     const customerResult = await pool.query(
       'SELECT id FROM customers WHERE firebase_uid = $1',
       [req.user.firebaseUid]
     );
-    
+
     if (customerResult.rows.length === 0) {
       return res.status(404).json({ error: 'Customer profile not found' });
     }
-    
+
     const customerId = customerResult.rows[0].id;
-    
+
     const result = await pool.query(
       `INSERT INTO family_members (customer_id, name, relationship, age, dietary_requirements)
-       VALUES ($1, $2, $3, $4, $5)
+       VALUES ($1, $2, $3, $4, $5::jsonb)
        RETURNING *`,
-      [customerId, name, relationship, age, dietary_requirements]
+      [customerId, name, relationship, age, JSON.stringify(dietary_requirements)]
     );
-    
+
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error adding family member:', error);
@@ -241,7 +343,7 @@ app.put('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
   try {
     const { memberId } = req.params;
     const updates = req.body;
-    
+
     // Verify this family member belongs to the authenticated user
     const verifyResult = await pool.query(
       `SELECT fm.* FROM family_members fm
@@ -249,30 +351,44 @@ app.put('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
        WHERE fm.id = $1 AND c.firebase_uid = $2`,
       [memberId, req.user.firebaseUid]
     );
-    
+
     if (verifyResult.rows.length === 0) {
       return res.status(404).json({ error: 'Family member not found' });
     }
-    
+
     // Build UPDATE query
     const fields = Object.keys(updates);
     const values = Object.values(updates);
-    
+
     if (fields.length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
-    
-    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
-    values.push(memberId);
-    
+
+    const setClause = fields.map((field, index) => {
+      if (field === 'dietary_requirements') {
+        return `${field} = $${index + 1}::jsonb`;
+      }
+      return `${field} = $${index + 1}`;
+    }).join(', ');
+
+    // Convert dietary_requirements to JSON string if present
+    const processedValues = values.map((value, index) => {
+      if (fields[index] === 'dietary_requirements') {
+        return JSON.stringify(value);
+      }
+      return value;
+    });
+
+    processedValues.push(memberId);
+
     const query = `
-      UPDATE family_members 
+      UPDATE family_members
       SET ${setClause}
-      WHERE id = $${values.length}
+      WHERE id = $${processedValues.length}
       RETURNING *
     `;
-    
-    const result = await pool.query(query, values);
+
+    const result = await pool.query(query, processedValues);
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error updating family member:', error);
@@ -284,23 +400,22 @@ app.put('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
 app.delete('/api/profile/family/:memberId', authenticateUser, async (req, res) => {
   try {
     const { memberId } = req.params;
-    
-    // Verify and delete
-    const result = await pool.query(
-      `DELETE FROM family_members fm
-       USING customers c
-       WHERE fm.customer_id = c.id 
-       AND fm.id = $1 
-       AND c.firebase_uid = $2
-       RETURNING fm.*`,
+
+    // Verify this family member belongs to the authenticated user
+    const verifyResult = await pool.query(
+      `SELECT fm.* FROM family_members fm
+       JOIN customers c ON fm.customer_id = c.id
+       WHERE fm.id = $1 AND c.firebase_uid = $2`,
       [memberId, req.user.firebaseUid]
     );
-    
-    if (result.rows.length === 0) {
+
+    if (verifyResult.rows.length === 0) {
       return res.status(404).json({ error: 'Family member not found' });
     }
-    
-    res.json({ message: 'Family member deleted', member: result.rows[0] });
+
+    await pool.query('DELETE FROM family_members WHERE id = $1', [memberId]);
+
+    res.json({ success: true, message: 'Family member deleted' });
   } catch (error) {
     console.error('Error deleting family member:', error);
     res.status(500).json({ error: 'Failed to delete family member' });
@@ -310,36 +425,488 @@ app.delete('/api/profile/family/:memberId', authenticateUser, async (req, res) =
 // Get current user's orders
 app.get('/api/profile/orders', authenticateUser, async (req, res) => {
   try {
-    const { limit = 10, offset = 0 } = req.query;
-    
     // Get customer ID
     const customerResult = await pool.query(
       'SELECT id FROM customers WHERE firebase_uid = $1',
       [req.user.firebaseUid]
     );
-    
+
     if (customerResult.rows.length === 0) {
       return res.json([]);
     }
-    
+
     const customerId = customerResult.rows[0].id;
-    
+
     const result = await pool.query(
-      `SELECT * FROM orders 
-       WHERE customer_id = $1 
-       ORDER BY order_date DESC 
-       LIMIT $2 OFFSET $3`,
-      [customerId, limit, offset]
+      `SELECT * FROM orders
+       WHERE customer_id = $1
+       ORDER BY order_date DESC
+       LIMIT 10`,
+      [customerId]
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching orders:', error);
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
-// Get recommended order for current user
+
+// Get recommended order based on purchase history
+// Updated endpoint to use the recommended_orders table
 app.get('/api/profile/recommended-order', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+    if (customerResult.rows.length === 0) {
+      return res.json({ items: [] });
+    }
+    const customerId = customerResult.rows[0].id;
+    
+    // Get recommended orders from the recommended_orders table
+    const result = await pool.query(
+      `SELECT 
+        product_sku as id,
+        product_name,
+        product_sku,
+        quantity,
+        price,
+        image_url,
+        is_recommended,
+        recommendation_reason
+       FROM recommended_orders
+       WHERE customer_id = $1
+       ORDER BY is_recommended DESC, created_at DESC
+       LIMIT 8`,
+      [customerId]
+    );
+    
+    // Transform data to ensure correct types
+    const items = result.rows.map(item => ({
+      id: item.id,
+      product_name: item.product_name,
+      product_sku: item.product_sku,
+      quantity: parseInt(item.quantity) || 1,
+      price: parseFloat(item.price),
+      image_url: item.image_url,
+      is_recommended: item.is_recommended,
+      recommendation_reason: item.recommendation_reason
+    }));
+    
+    res.json({ items });
+    
+  } catch (error) {
+    console.error('Error fetching recommended order:', error);
+    
+    // Check if error is due to missing table
+    if (error.code === '42P01') {
+      // Table doesn't exist - return empty array instead of error
+      console.log('recommended_orders table does not exist, returning empty recommendations');
+      return res.json({ items: [] });
+    }
+    
+    // For other errors, return 500
+    res.status(500).json({ error: 'Failed to fetch recommended order' });
+  }
+});
+
+
+// Get current user's subscriptions
+app.get('/api/profile/subscriptions', authenticateUser, async (req, res) => {
+  try {
+    // Get customer ID
+    const customerResult = await pool.query(
+      'SELECT id FROM customers WHERE firebase_uid = $1',
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.json([]);
+    }
+
+    const customerId = customerResult.rows[0].id;
+
+    const result = await pool.query(
+      'SELECT * FROM subscriptions WHERE customer_id = $1 ORDER BY start_date DESC',
+      [customerId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching subscriptions:', error);
+    res.status(500).json({ error: 'Failed to fetch subscriptions' });
+  }
+});
+
+// Update subscription
+app.put('/api/profile/subscriptions/:subscriptionId', authenticateUser, async (req, res) => {
+  try {
+    const { subscriptionId } = req.params;
+    const updates = req.body;
+
+    // Verify subscription belongs to user
+    const verifyResult = await pool.query(
+      `SELECT s.* FROM subscriptions s
+       JOIN customers c ON s.customer_id = c.id
+       WHERE s.id = $1 AND c.firebase_uid = $2`,
+      [subscriptionId, req.user.firebaseUid]
+    );
+
+    if (verifyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Subscription not found' });
+    }
+
+    // Build UPDATE query
+    const fields = Object.keys(updates);
+    const values = Object.values(updates);
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
+    values.push(subscriptionId);
+
+    const query = `
+      UPDATE subscriptions
+      SET ${setClause}
+      WHERE id = $${values.length}
+      RETURNING *
+    `;
+
+    const result = await pool.query(query, values);
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Error updating subscription:', error);
+    res.status(500).json({ error: 'Failed to update subscription' });
+  }
+});
+
+// Add loyalty points (for scanner app)
+app.post('/api/loyalty/add-points', async (req, res) => {
+  try {
+    const { customerId, points } = req.body;
+
+    if (!customerId || !points) {
+      return res.status(400).json({ error: 'customerId and points are required' });
+    }
+
+    // Find customer by ID or EAN-13 barcode
+    let customerQuery = await pool.query(
+  `SELECT id, name, loyalty_points, ean13_barcode 
+   FROM customers 
+   WHERE ean13_barcode = $1`,
+  [customerId]
+);
+
+// If not found by barcode, try by ID
+if (customerQuery.rows.length === 0 && !isNaN(parseInt(customerId))) {
+  customerQuery = await pool.query(
+    `SELECT id, name, loyalty_points, ean13_barcode 
+     FROM customers 
+     WHERE id = $1`,
+    [parseInt(customerId)]
+  );
+}
+
+
+    if (customerQuery.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = customerQuery.rows[0];
+    const newPoints = (customer.loyalty_points || 0) + parseInt(points);
+
+    // Update loyalty points
+    await pool.query(
+      'UPDATE customers SET loyalty_points = $1 WHERE id = $2',
+      [newPoints, customer.id]
+    );
+
+    res.json({
+      success: true,
+      customerId: customer.id,
+      customerName: customer.name,
+      pointsAdded: parseInt(points),
+      newTotal: newPoints
+    });
+
+  } catch (error) {
+    console.error('Error adding loyalty points:', error);
+    res.status(500).json({ error: 'Failed to add loyalty points' });
+  }
+});
+
+// Add these endpoints to your server.js file
+
+// Get all available loyalty products
+app.get('/api/loyalty/products', async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, name, description, points_cost, category, image_url, stock_quantity
+       FROM loyalty_products
+       WHERE is_available = true
+       ORDER BY category, points_cost ASC`
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching loyalty products:', error);
+    res.status(500).json({ error: 'Failed to fetch products' });
+  }
+});
+
+// Get customer's current points balance
+app.get('/api/loyalty/balance/:customerId', async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    // Check if customerId is a barcode (13 digits) or a customer ID
+    const isBarcode = customerId.length === 13;
+
+    let result = await pool.query(
+      `SELECT id, name, loyalty_points, ean13_barcode
+       FROM customers
+       WHERE ean13_barcode = $1`,
+      [customerId]
+    );
+
+    // If not found by barcode, try by ID
+    if (result.rows.length === 0 && !isNaN(parseInt(customerId))) {
+      result = await pool.query(
+        `SELECT id, name, loyalty_points, ean13_barcode
+         FROM customers
+         WHERE id = $1`,
+        [parseInt(customerId)]
+      );
+    }
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = result.rows[0];
+    res.json({
+      customerId: customer.id,
+      customerName: customer.name,
+      points: customer.loyalty_points || 0
+    });
+  } catch (error) {
+    console.error('Error fetching customer balance:', error);
+    res.status(500).json({ error: 'Failed to fetch balance' });
+  }
+});
+
+// Redeem product with points
+app.post('/api/loyalty/redeem', async (req, res) => {
+  const client = await pool.connect();
+  
+  try {
+    const { customerId, productId, quantity = 1, redeemedBy } = req.body;
+
+    if (!customerId || !productId) {
+      return res.status(400).json({ error: 'customerId and productId are required' });
+    }
+
+    await client.query('BEGIN');
+
+    // Get customer
+    // Get customer
+const isBarcode = customerId.toString().length === 13;
+
+let customerResult = await client.query(
+  `SELECT id, name, loyalty_points, ean13_barcode
+   FROM customers
+   WHERE ean13_barcode = $1`,
+  [customerId]
+);
+
+// If not found by barcode, try by ID
+if (customerResult.rows.length === 0 && !isNaN(parseInt(customerId))) {
+  customerResult = await client.query(
+    `SELECT id, name, loyalty_points, ean13_barcode
+     FROM customers
+     WHERE id = $1`,
+    [parseInt(customerId)]
+  );
+}
+
+
+    if (customerResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = customerResult.rows[0];
+    const currentPoints = customer.loyalty_points || 0;
+
+    // Get product
+    const productResult = await client.query(
+      `SELECT id, name, points_cost, stock_quantity, is_available
+       FROM loyalty_products
+       WHERE id = $1`,
+      [productId]
+    );
+
+    if (productResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const product = productResult.rows[0];
+
+    // Check if product is available
+    if (!product.is_available) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Product is not available' });
+    }
+
+    // Check stock
+    if (product.stock_quantity < quantity) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Insufficient stock',
+        available: product.stock_quantity
+      });
+    }
+
+    // Calculate total cost
+    const totalCost = product.points_cost * quantity;
+
+    // Check if customer has enough points
+    if (currentPoints < totalCost) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ 
+        error: 'Insufficient points',
+        required: totalCost,
+        current: currentPoints,
+        shortage: totalCost - currentPoints
+      });
+    }
+
+    // Deduct points
+    const newPoints = currentPoints - totalCost;
+    await client.query(
+      'UPDATE customers SET loyalty_points = $1 WHERE id = $2',
+      [newPoints, customer.id]
+    );
+
+    // Update stock
+    await client.query(
+      'UPDATE loyalty_products SET stock_quantity = stock_quantity - $1 WHERE id = $2',
+      [quantity, productId]
+    );
+
+    // Record redemption
+    const redemptionResult = await client.query(
+      `INSERT INTO loyalty_redemptions 
+       (customer_id, product_id, points_spent, quantity, redeemed_by)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, redeemed_at`,
+      [customer.id, productId, totalCost, quantity, redeemedBy || 'Scanner']
+    );
+
+    await client.query('COMMIT');
+
+    res.json({
+      success: true,
+      redemptionId: redemptionResult.rows[0].id,
+      customerId: customer.id,
+      customerName: customer.name,
+      productName: product.name,
+      quantity: quantity,
+      pointsSpent: totalCost,
+      previousPoints: currentPoints,
+      newPoints: newPoints,
+      redeemedAt: redemptionResult.rows[0].redeemed_at
+    });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error redeeming product:', error);
+    res.status(500).json({ error: 'Failed to redeem product' });
+  } finally {
+    client.release();
+  }
+});
+
+// Get redemption history for a customer
+app.get('/api/loyalty/redemptions/:customerId', async (req, res) => {
+  try {
+    const { customerId } = req.params;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const result = await pool.query(
+      `SELECT 
+        r.id,
+        r.points_spent,
+        r.quantity,
+        r.redeemed_at,
+        r.redeemed_by,
+        p.name as product_name,
+        p.category
+       FROM loyalty_redemptions r
+       JOIN loyalty_products p ON r.product_id = p.id
+       WHERE r.customer_id = $1
+       ORDER BY r.redeemed_at DESC
+       LIMIT $2`,
+      [customerId, limit]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching redemptions:', error);
+    res.status(500).json({ error: 'Failed to fetch redemptions' });
+  }
+});
+
+// Get redemption statistics (for admin)
+app.get('/api/loyalty/stats', async (req, res) => {
+  try {
+    const stats = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT customer_id) as total_customers,
+        COUNT(*) as total_redemptions,
+        SUM(points_spent) as total_points_spent,
+        AVG(points_spent) as avg_points_per_redemption
+      FROM loyalty_redemptions
+      WHERE redeemed_at >= NOW() - INTERVAL '30 days'
+    `);
+
+    const topProducts = await pool.query(`
+      SELECT 
+        p.name,
+        p.category,
+        COUNT(r.id) as redemption_count,
+        SUM(r.quantity) as total_quantity,
+        SUM(r.points_spent) as total_points
+      FROM loyalty_redemptions r
+      JOIN loyalty_products p ON r.product_id = p.id
+      WHERE r.redeemed_at >= NOW() - INTERVAL '30 days'
+      GROUP BY p.id, p.name, p.category
+      ORDER BY redemption_count DESC
+      LIMIT 10
+    `);
+
+    res.json({
+      overview: stats.rows[0],
+      topProducts: topProducts.rows
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ error: 'Failed to fetch statistics' });
+  }
+});
+
+
+// ============================================
+// BARCODE ENDPOINT (EAN-13)
+// ============================================
+
+// Generate EAN-13 barcode for current user
+app.get('/api/barcode', authenticateUser, async (req, res) => {
   try {
     // Get customer ID
     const customerResult = await pool.query(
@@ -353,102 +920,122 @@ app.get('/api/profile/recommended-order', authenticateUser, async (req, res) => 
 
     const customerId = customerResult.rows[0].id;
 
-    // Get recommended order items
-    const result = await pool.query(
-      `SELECT 
-        id,
-        product_name,
-        product_sku,
-        quantity,
-        price,
-        image_url,
-        is_recommended,
-        recommendation_reason
-      FROM recommended_orders
-      WHERE customer_id = $1
-      ORDER BY is_recommended DESC, id ASC`,
-      [customerId]
-    );
+    // Get or create EAN-13 barcode
+    const ean13 = await getOrCreateEAN13(customerId, req.user.firebaseUid);
 
-    res.json(result.rows);
+    // Generate the barcode image (changed to QR code)
+    const png = await bwipjs.toBuffer({
+  bcid: 'qrcode',         // ⭐ CHANGED from 'ean13'
+  text: ean13,
+  scale: 3,
+  width: 30,
+  height: 30,
+  eclevel: 'M',
+  version: 3,
+});
+
+    res.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': png.length,
+    });
+    res.end(png);
   } catch (error) {
-    console.error('Error fetching recommended order:', error);
-    res.status(500).json({ error: 'Failed to fetch recommended order' });
+    console.error('Error generating barcode:', error);
+    res.status(500).json({ error: 'Failed to generate barcode' });
   }
 });
 
-// Get current user's subscriptions
-app.get('/api/profile/subscriptions', authenticateUser, async (req, res) => {
+// ============================================
+// GOOGLE WALLET ENDPOINTS
+// ============================================
+
+/**
+ * Generate Google Wallet pass for current user
+ * Returns a "Add to Google Wallet" URL
+ */
+app.get('/api/google-wallet/pass', authenticateUser, async (req, res) => {
   try {
+    // Get customer data
+    const customerResult = await pool.query(
+      `SELECT id, name, email, ean13_barcode, loyalty_points, member_since 
+       FROM customers 
+       WHERE firebase_uid = $1`,
+      [req.user.firebaseUid]
+    );
+
+    if (customerResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    const customer = customerResult.rows[0];
+
+    // Ensure customer has an EAN-13 barcode
+    if (!customer.ean13_barcode) {
+      const ean13 = await getOrCreateEAN13(customer.id, req.user.firebaseUid);
+      customer.ean13_barcode = ean13;
+    }
+
+    // Create/update Google Wallet pass
+    const saveUrl = await googleWallet.createGenericObject({
+      id: customer.id,
+      name: customer.name,
+      email: customer.email,
+      ean13: customer.ean13_barcode,
+      loyaltyPoints: customer.loyalty_points || 0,
+      memberSince: customer.member_since
+    });
+
+    res.json({
+      success: true,
+      saveUrl: saveUrl,
+      message: 'Google Wallet pass generated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error generating Google Wallet pass:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate Google Wallet pass',
+      details: error.message 
+    });
+  }
+});
+
+/**
+ * Update loyalty points in Google Wallet
+ * Called automatically when points change
+ */
+app.post('/api/google-wallet/update-points', authenticateUser, async (req, res) => {
+  try {
+    const { points } = req.body;
+
     // Get customer ID
     const customerResult = await pool.query(
       'SELECT id FROM customers WHERE firebase_uid = $1',
       [req.user.firebaseUid]
     );
-    
+
     if (customerResult.rows.length === 0) {
-      return res.json([]);
+      return res.status(404).json({ error: 'Customer not found' });
     }
-    
+
     const customerId = customerResult.rows[0].id;
-    
-    const result = await pool.query(
-      'SELECT * FROM subscriptions WHERE customer_id = $1 ORDER BY id',
-      [customerId]
-    );
-    
-    res.json(result.rows);
+
+    // Update points in Google Wallet
+    await googleWallet.updateLoyaltyPoints(customerId, points);
+
+    res.json({
+      success: true,
+      message: 'Google Wallet pass updated successfully'
+    });
+
   } catch (error) {
-    console.error('Error fetching subscriptions:', error);
-    res.status(500).json({ error: 'Failed to fetch subscriptions' });
+    console.error('Error updating Google Wallet pass:', error);
+    res.status(500).json({ 
+      error: 'Failed to update Google Wallet pass',
+      details: error.message 
+    });
   }
 });
-
-// Update subscription
-app.put('/api/profile/subscriptions/:subscriptionId', authenticateUser, async (req, res) => {
-  try {
-    const { subscriptionId } = req.params;
-    const updates = req.body;
-    
-    // Verify subscription belongs to user
-    const verifyResult = await pool.query(
-      `SELECT s.* FROM subscriptions s
-       JOIN customers c ON s.customer_id = c.id
-       WHERE s.id = $1 AND c.firebase_uid = $2`,
-      [subscriptionId, req.user.firebaseUid]
-    );
-    
-    if (verifyResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Subscription not found' });
-    }
-    
-    // Build UPDATE query
-    const fields = Object.keys(updates);
-    const values = Object.values(updates);
-    
-    if (fields.length === 0) {
-      return res.status(400).json({ error: 'No fields to update' });
-    }
-    
-    const setClause = fields.map((field, index) => `${field} = $${index + 1}`).join(', ');
-    values.push(subscriptionId);
-    
-    const query = `
-      UPDATE subscriptions 
-      SET ${setClause}
-      WHERE id = $${values.length}
-      RETURNING *
-    `;
-    
-    const result = await pool.query(query, values);
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error updating subscription:', error);
-    res.status(500).json({ error: 'Failed to update subscription' });
-  }
-});
-
-// ============================================
 
 // ============================================
 // HEADER BLOCKS ENDPOINTS (Auth required)
@@ -461,11 +1048,11 @@ app.get('/api/header/loyalty-points', authenticateUser, async (req, res) => {
       'SELECT loyalty_points FROM customers WHERE firebase_uid = $1',
       [req.user.firebaseUid]
     );
-    
+
     if (customerResult.rows.length === 0) {
       return res.json({ points: 0 });
     }
-    
+
     res.json({ points: customerResult.rows[0].loyalty_points || 0 });
   } catch (error) {
     console.error('Error fetching loyalty points:', error);
@@ -477,13 +1064,13 @@ app.get('/api/header/loyalty-points', authenticateUser, async (req, res) => {
 app.get('/api/header/rewards', authenticateUser, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, name, description, points_required, icon 
-       FROM loyalty_rewards 
-       WHERE is_available = true 
-       ORDER BY points_required ASC 
+      `SELECT id, name, description, points_required, icon
+       FROM loyalty_rewards
+       WHERE is_available = true
+       ORDER BY points_required ASC
        LIMIT 5`
     );
-    
+
     res.json(result.rows);
   } catch (error) {
     console.error('Error fetching rewards:', error);
@@ -495,13 +1082,13 @@ app.get('/api/header/rewards', authenticateUser, async (req, res) => {
 app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title, content, tip_type, icon 
-       FROM tips 
-       WHERE is_active = true 
-       ORDER BY RANDOM() 
+      `SELECT id, title, content, tip_type, icon, product_link
+       FROM tips
+       WHERE is_active = true
+       ORDER BY RANDOM()
        LIMIT 1`
     );
-    
+
     if (result.rows.length === 0) {
       return res.json({
         title: 'Welcome!',
@@ -510,7 +1097,7 @@ app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
         icon: 'info'
       });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching tip:', error);
@@ -522,13 +1109,13 @@ app.get('/api/header/tip-of-the-day', authenticateUser, async (req, res) => {
 app.get('/api/header/next-event', authenticateUser, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, title, description, event_date, event_type, icon 
-       FROM events 
-       WHERE is_active = true AND event_date >= CURRENT_DATE 
-       ORDER BY event_date ASC 
+      `SELECT id, title, description, event_date, event_type, icon
+       FROM events
+       WHERE is_active = true AND event_date >= CURRENT_DATE
+       ORDER BY event_date ASC
        LIMIT 1`
     );
-    
+
     if (result.rows.length === 0) {
       return res.json({
         title: 'No upcoming events',
@@ -538,7 +1125,7 @@ app.get('/api/header/next-event', authenticateUser, async (req, res) => {
         icon: 'calendar'
       });
     }
-    
+
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Error fetching event:', error);
@@ -611,6 +1198,9 @@ Protected endpoints (require Authorization header):
   GET  /api/profile/recommended-order
   GET  /api/profile/subscriptions
   PUT  /api/profile/subscriptions/:subscriptionId
+  GET  /api/barcode (EAN-13)
+  GET  /api/google-wallet/pass
+  POST /api/google-wallet/update-points
 
 Public endpoints:
   GET  /health

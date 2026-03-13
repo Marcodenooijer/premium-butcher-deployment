@@ -1,4 +1,5 @@
 // frontend/src/services/api.js
+// Updated with NO CACHING - all requests are fresh from server
 import { getUserTokenNew as getUserToken } from '../firebase';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -8,18 +9,28 @@ const getAuthHeaders = async () => {
   return {
     'Content-Type': 'application/json',
     'Authorization': token ? `Bearer ${token}` : '',
+    // Force no-cache on all requests
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
   };
 };
 
 const apiCall = async (endpoint, options = {}) => {
   const headers = await getAuthHeaders();
   
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  // Add cache-busting timestamp to all requests
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const cacheBustingUrl = `${API_BASE_URL}${endpoint}${separator}_t=${Date.now()}`;
+
+  const response = await fetch(cacheBustingUrl, {
     ...options,
     headers: {
       ...headers,
       ...options.headers,
     },
+    // Disable browser caching
+    cache: 'no-store',
   });
 
   if (!response.ok) {
@@ -85,7 +96,6 @@ export const api = {
     });
   },
 
-
   // Header blocks API methods
   getHeaderLoyaltyPoints: async () => {
     return apiCall('/api/header/loyalty-points');
@@ -100,7 +110,6 @@ export const api = {
   },
 
   getHeaderNextEvent: async () => {
-
     return apiCall('/api/header/next-event');
   },
 
@@ -108,20 +117,53 @@ export const api = {
     return apiCall('/api/sustainability');
   },
 
+  // Barcode API method - ALWAYS FRESH
+  getBarcode: async () => {
+    const token = await getUserToken();
+    // Force fresh barcode every time with timestamp
+    const response = await fetch(`${API_BASE_URL}/api/barcode?_t=${Date.now()}`, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+      },
+      cache: 'no-store',
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Session expired. Please sign in again.');
+      }
+      throw new Error('Failed to fetch barcode');
+    }
+
+    // Return the blob as a URL
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  },
+
+  // Google Wallet API method - ALWAYS FRESH
+  getGoogleWalletPass: async () => {
+    return apiCall('/api/google-wallet/pass');
+  },
+
   healthCheck: async () => {
-    const response = await fetch(`${API_BASE_URL}/health`);
+    const response = await fetch(`${API_BASE_URL}/health?_t=${Date.now()}`, {
+      cache: 'no-store',
+    });
     return response.json();
   },
 };
 
 export default api;
 
-
-// Get recommended order
+// Get recommended order - ALWAYS FRESH
 export const getRecommendedOrder = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/profile/recommended-order`, {
+  const response = await fetch(`${API_BASE_URL}/api/profile/recommended-order?_t=${Date.now()}`, {
     headers: await getAuthHeaders(),
+    cache: 'no-store',
   });
   if (!response.ok) throw new Error('Failed to fetch recommended order');
-  return response.json();
+  const data = await response.json();
+  return data.items || [];  // Return just the items array
 };

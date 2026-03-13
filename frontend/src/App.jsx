@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import api, { getRecommendedOrder } from './services/api';
 import { useAuth } from './contexts/AuthContext';
+import PWAInstallPrompt from './components/PWAInstallPrompt'; // Add this import
 import OrdersSection from './components/OrdersSection';
+import { useTracking } from './posthogTracking';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -41,7 +43,9 @@ import {
   X,
   ShoppingCart,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  QrCode,
+  Wallet
 } from 'lucide-react';
 import './App.css';
 
@@ -126,6 +130,7 @@ const ETHNICITIES = [
 function App() {
   const { logout, currentUser } = useAuth();
   // Get customer ID from URL parameter or default to 1
+  const { identifyUser, trackProfileView, trackProfileEdit } = useTracking();
 
   // State management
   const [customerData, setCustomerData] = useState(null);
@@ -144,6 +149,10 @@ function App() {
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [newMember, setNewMember] = useState({ name: '', relationship: '', age: '', gender: '', dietary_requirements: '' });
+  const [barcodeUrl, setBarcodeUrl] = useState(null);
+  const [showBarcode, setShowBarcode] = useState(false);
+
+
 
   // Load data from API on component mount
   useEffect(() => {
@@ -180,6 +189,8 @@ function App() {
     }
   };
 
+
+
   const handleSave = async () => {
     try {
       setSaving(true);
@@ -202,23 +213,23 @@ function App() {
 const handleProfileUpdate = async (updates) => {
   try {
     setSaving(true);
-    
+
     // Merge updates with existing customer data
     const updatedData = {
       ...customerData,
       ...updates
     };
-    
+
     // Update local state immediately for UI responsiveness
     setCustomerData(updatedData);
-    
+
     // Save to API
     const response = await api.updateProfile(updatedData);
     setCustomerData(response);
-    
+
     // Show success message
     console.log('✅ Preferences updated successfully!');
-    
+
   } catch (err) {
     console.error('Error updating preferences:', err);
     // Revert to previous state on error
@@ -281,6 +292,34 @@ const handleProfileUpdate = async (updates) => {
       alert("Failed to delete family member");
     }
   };
+
+    // Barcode handler
+  const handleShowBarcode = async () => {
+    try {
+      if (!barcodeUrl) {
+        const url = await api.getBarcode();
+        setBarcodeUrl(url);
+      }
+      setShowBarcode(true);
+    } catch (error) {
+      console.error("Error loading barcode:", error);
+      alert("Failed to load barcode");
+    }
+  };
+
+  // Google Wallet handler
+  const handleAddToGoogleWallet = async () => {
+    try {
+      const response = await api.getGoogleWalletPass();
+      if (response.saveUrl) {
+        window.open(response.saveUrl, '_blank');
+      }
+    } catch (error) {
+      console.error("Error adding to Google Wallet:", error);
+      alert("Failed to add to Google Wallet");
+    }
+  };
+
   const getLoyaltyColor = (tier) => {
     const colors = {
       'Bronze': 'bg-orange-100 text-orange-800',
@@ -364,6 +403,9 @@ const handleProfileUpdate = async (updates) => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* PWA Install Prompt - Shows on all pages */}
+      <PWAInstallPrompt />
+
       {/* New Header Component */}
       <Header customerData={customerData} onLogout={handleLogout} />
 
@@ -734,6 +776,76 @@ const handleProfileUpdate = async (updates) => {
                   )}
                 </CardContent>
               </Card>
+
+                            {/* Customer Barcode Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <QrCode className="w-5 h-5" />
+                    Customer Barcode
+                  </CardTitle>
+                  <CardDescription>
+                    Your unique customer identification barcode
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {showBarcode && barcodeUrl ? (
+                    <div className="space-y-4">
+                      <div className="flex justify-center p-6 bg-white border-2 border-gray-200 rounded-lg">
+                        <img
+                          src={barcodeUrl}
+                          alt="Customer Barcode"
+                          className="max-w-full h-auto"
+                        />
+                      </div>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          onClick={() => setShowBarcode(false)}
+                          variant="outline"
+                          size="sm"
+                        >
+                          Hide Barcode
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const link = document.createElement('a');
+                            link.href = barcodeUrl;
+                            link.download = 'customer-barcode.png';
+                            link.click();
+                          }}
+                          size="sm"
+                          className="bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)]"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Download
+                        </Button>
+                        <Button
+                          onClick={handleAddToGoogleWallet}
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Wallet className="w-4 h-4 mr-1" />
+                          Add to Wallet
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <QrCode className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-600 mb-4">
+                        Show your barcode for quick identification at checkout
+                      </p>
+                      <Button
+                        onClick={handleShowBarcode}
+                        className="bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)]"
+                      >
+                        <QrCode className="w-4 h-4 mr-2" />
+                        Show My Barcode
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
           </TabsContent>
           <TabsContent value="preferences" className="space-y-6">
             <MeatPreferences
@@ -742,13 +854,13 @@ const handleProfileUpdate = async (updates) => {
               isEditing={isEditingPreferences}
               onEditToggle={() => setIsEditingPreferences(!isEditingPreferences)}
               onSave={handleSave}
-	      onUpdate={handleProfileUpdate} 
+              onUpdate={handleProfileUpdate}
               saving={saving}
             />
             <CulinaryProfile
               profile={customerData}
               onChange={setCustomerData}
-	      onUpdate={handleProfileUpdate} 
+              onUpdate={handleProfileUpdate}
               isEditing={isEditingPreferences}
             />
           </TabsContent>
@@ -890,7 +1002,7 @@ const handleProfileUpdate = async (updates) => {
           )}
 
          <OrdersSection orders={orders} />
-  
+
 
 
             {/* Active Subscriptions */}
