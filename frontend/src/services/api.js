@@ -65,7 +65,7 @@ export const api = {
   },
 
   updateProfile: async (data) => {
-    return apiCall('/api/profile', {
+    return apiCall('/customer/profile', {
       method: 'PUT',
       body: JSON.stringify(data),
     });
@@ -137,10 +137,10 @@ export const api = {
   },
 
   // Barcode API method - ALWAYS FRESH
-  getBarcode: async () => {
+  getBarcode: async (enrollmentId) => {
     const token = await getUserToken();
     // Force fresh barcode every time with timestamp
-    const response = await fetch(`${API_BASE_URL}/api/barcode?_t=${Date.now()}`, {
+    const response = await fetch(`${API_BASE_URL}/loyalty-programs/enrollments/${enrollmentId}/barcode?_t=${Date.now()}`, {
       headers: {
         'Authorization': token ? `Bearer ${token}` : '',
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -171,6 +171,25 @@ export const api = {
       cache: 'no-store',
     });
     return response.json();
+  },
+
+  getLanguages: async () => {
+    const params = new URLSearchParams();
+    params.set('size', Number.MAX_SAFE_INTEGER.toString())
+
+    return apiCall(`/localization/languages?${params}`);
+  },
+
+  getCities: async (countryId) => {
+    return apiCall('/localization/cities?country=' + countryId);
+  },
+
+  getCountries: async () => {
+    return apiCall('/localization/countries');
+  },
+
+  getEthnicities: async () => {
+    return apiCall('/localization/countries');
   },
 };
 

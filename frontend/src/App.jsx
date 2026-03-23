@@ -52,6 +52,7 @@ import './App.css';
 import Header from './components/Header';
 import MeatPreferences from './components/MeatPreferences';
 import CulinaryProfile from './components/CulinaryProfile';
+import {cn} from "@/lib/utils.js";
 
 // ISO 639-1 Language Codes (common European languages)
 const LANGUAGES = [
@@ -134,7 +135,11 @@ function App() {
 
   // State management
   const [customerData, setCustomerData] = useState(null);
-  const [enrollmentData, setEnrollmentData] = useState([]);
+  const [enrollmentData, setEnrollmentData] = useState(null);
+  const [languagesData, setLanguagesData] = useState([]);
+  const [citiesData, setCitiesData] = useState([]);
+  const [countriesData, setCountriesData] = useState([]);
+  const [ethnicitiesData, setEthnicitiesData] = useState([]);
   const [sustainabilityData, setSustainabilityData] = useState(null);
   const [familyMembers, setFamilyMembers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -160,16 +165,25 @@ function App() {
     loadAllData();
   }, []);
 
+  useEffect(() => {
+    if (customerData?.country_id){
+      api.getCities(customerData.country_id).then(response => setCitiesData(response.map(city=>({id: city.city_id, name: city.name}))));
+    }
+  }, [customerData?.country_id]);
+
   const loadAllData = async () => {
     try {
       setLoading(true);
       setError(null);
 
       // Fetch all data in parallel
-      const [customer, enrollments, family, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
+      const [customer, enrollments, family, languages,  countries, ethnicities, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
         api.getProfile(),
         api.getEnrollments(),
         api.getFamilyMembers(),
+        api.getLanguages(),
+        api.getCountries(),
+        api.getEthnicities()
         // api.getOrders({ limit: 10 }),
         // api.getSubscriptions(),
         // api.getSustainability(),
@@ -180,6 +194,9 @@ function App() {
       setEnrollmentData(enrollments[0]);
       setOrders(await api.getOrders(customer.id))
       setFamilyMembers(family);
+      setLanguagesData(languages.results);
+      setCountriesData(countries.map(country=>({id: country.country_id, name: country.name})));
+      setEthnicitiesData(ethnicities.map(ethnicity=>({id: ethnicity.country_id, name: ethnicity.name})));
       // setOrders(customerOrders);
       // setSubscriptions(customerSubscriptions);
       // setSustainabilityData(sustainability);
@@ -302,7 +319,7 @@ const handleProfileUpdate = async (updates) => {
   const handleShowBarcode = async () => {
     try {
       if (!barcodeUrl) {
-        const url = await api.getBarcode();
+        const url = await api.getBarcode(enrollmentData.id);
         setBarcodeUrl(url);
       }
       setShowBarcode(true);
@@ -412,7 +429,7 @@ const handleProfileUpdate = async (updates) => {
       <PWAInstallPrompt />
 
       {/* New Header Component */}
-      <Header customerData={customerData} onLogout={handleLogout} />
+      <Header customerData={customerData} enrollment={enrollmentData} onLogout={handleLogout} />
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -487,16 +504,29 @@ const handleProfileUpdate = async (updates) => {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="name">Full Name</Label>
+                      <Label htmlFor="firstName">First Name</Label>
                       {isEditingPersonal ? (
                         <Input
-                          id="name"
-                          value={customerData.name || ''}
-                          onChange={(e) => setCustomerData({...customerData, name: e.target.value})}
+                          id="firstName"
+                          value={customerData.first_name || ''}
+                          onChange={(e) => setCustomerData({...customerData, first_name: e.target.value})}
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-gray-700">{`${customerData.first_name} ${customerData.last_name}`}</p>
+                        <p className="mt-1 text-gray-700">{customerData.first_name}</p>
+                      )}
+                    </div>
+                    <div>
+                      <Label htmlFor="lastName">Last Name</Label>
+                      {isEditingPersonal ? (
+                          <Input
+                              id="lastName"
+                              value={customerData.last_name || ''}
+                              onChange={(e) => setCustomerData({...customerData, last_name: e.target.value})}
+                              className="mt-1"
+                          />
+                      ) : (
+                          <p className="mt-1 text-gray-700">{customerData.last_name}</p>
                       )}
                     </div>
                     <div>
@@ -586,79 +616,232 @@ const handleProfileUpdate = async (updates) => {
                   {/* NEW FIELDS: Language, Nationality, Ethnicity */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                     <div>
-                      <Label htmlFor="language">Language</Label>
+                      <Label htmlFor="language">Languages</Label>
                       {isEditingPersonal ? (
-                        <Select
-                          value={customerData.language || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, language: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select language" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {LANGUAGES.map((lang) => (
-                              <SelectItem key={lang.code} value={lang.code}>
-                                {lang.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <div className="space-y-3 mt-1">
+                            {/* 1. The Select acts as the "Picker" */}
+                            <Select
+                                value="" // Keep empty so it resets after each selection
+                                onValueChange={(value) => {
+                                  const selectedIds = Array.isArray(customerData.language_ids) ? customerData.language_ids : [];
+                                  // Only add if it's not already in the list
+                                  if (!selectedIds.includes(value)) {
+                                    setCustomerData({
+                                      ...customerData,
+                                      language_ids: [...selectedIds, value]
+                                    });
+                                  }
+                                }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Add a language..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {languagesData.map((lang) => (
+                                    <SelectItem key={lang.id} value={lang.id}>
+                                      {lang.name}
+                                    </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* 2. The Pill Container (Edit Mode) */}
+                            <div className="flex flex-wrap gap-2">
+                              {Array.isArray(customerData.language_ids) && customerData.language_ids.map((id) => {
+                                const lang = languagesData.find((l) => l.id === id);
+                                if (!lang) return null;
+
+                                return (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        onClick={() => {
+                                          const filtered = customerData.language_ids.filter((itemId) => itemId !== id);
+                                          setCustomerData({ ...customerData, language_ids: filtered });
+                                        }}
+                                        className="inline-flex items-center gap-1 px-3 py-1 bg-primary/10 text-primary border border-primary/20 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive rounded-full text-xs font-medium transition-colors group"
+                                    >
+                                      {lang.name}
+                                      <span className="text-muted-foreground group-hover:text-white ml-1">×</span>
+                                    </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                       ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.language
-                            ? LANGUAGES.find(l => l.code === customerData.language)?.name || customerData.language
-                            : 'Not provided'}
-                        </p>
+                          /* 3. Read-Only Mode */
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {Array.isArray(customerData.language_ids) && customerData.language_ids.length > 0 ? (
+                                customerData.language_ids.map((id) => {
+                                  const langName = languagesData.find((l) => l.id === id)?.name || id;
+                                  return (
+                                      <span key={id} className="inline-flex items-center px-2 py-0.5 rounded bg-secondary text-secondary-foreground text-sm border">
+                                        {langName}
+                                      </span>
+                                  );
+                                })
+                            ) : (
+                                <p className="text-gray-500 italic text-sm">Not provided</p>
+                            )}
+                          </div>
                       )}
                     </div>
                     <div>
                       <Label htmlFor="nationality">Nationality</Label>
                       {isEditingPersonal ? (
-                        <Select
-                          value={customerData.nationality || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, nationality: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select nationality" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {NATIONALITIES.map((nat) => (
-                              <SelectItem key={nat.code} value={nat.code}>
-                                {nat.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <div className="space-y-3 mt-1">
+                            {/* 1. The Select acts as the "Adder" */}
+                            <Select
+                                value="" // Reset to placeholder after selection
+                                onValueChange={(value) => {
+                                  const currentNationalities = Array.isArray(customerData.nationality_ids)
+                                      ? customerData.nationality_ids
+                                      : (customerData.nationality_ids ? [customerData.nationality_ids] : []);
+
+                                  // Only add if not already selected
+                                  if (!currentNationalities.includes(value)) {
+                                    setCustomerData({
+                                      ...customerData,
+                                      nationality_ids: [...currentNationalities, value]
+                                    });
+                                  }
+                                }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Add nationality..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {countriesData.map((nat) => (
+                                    <SelectItem key={nat.id} value={nat.id}>
+                                      {nat.name}
+                                    </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* 2. The Pill Container (Edit Mode) */}
+                            <div className="flex flex-wrap gap-2">
+                              {Array.isArray(customerData.nationality_ids) && customerData.nationality_ids.map((id) => {
+                                const country = countriesData.find((n) => n.id === id);
+                                if (!country) return null;
+
+                                return (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        onClick={() => {
+                                          const filtered = customerData.nationality_ids.filter((c) => c !== id);
+                                          setCustomerData({ ...customerData, nationality_ids: filtered });
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 rounded-full text-xs font-medium transition-all group"
+                                    >
+                                      {country.name}
+                                      <span className="text-blue-400 group-hover:text-red-500 font-bold ml-0.5">
+                                        ×
+                                      </span>
+                                    </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                       ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.nationality
-                            ? NATIONALITIES.find(n => n.code === customerData.nationality)?.name || customerData.nationality
-                            : 'Not provided'}
-                        </p>
+                          /* 3. Read-Only Mode */
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {Array.isArray(customerData.nationality_ids) && customerData.nationality_ids.length > 0 ? (
+                                customerData.nationality_ids.map((id) => {
+                                  const countryName = countriesData.find((n) => n.id === id)?.name || id;
+                                  return (
+                                      <span
+                                          key={id}
+                                          className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-800 text-sm border border-gray-200 shadow-sm"
+                                      >
+                                        {countryName}
+                                      </span>
+                                  );
+                                })
+                            ) : (
+                                <p className="text-gray-500 italic text-sm">Not provided</p>
+                            )}
+                          </div>
                       )}
                     </div>
                     <div>
                       <Label htmlFor="ethnicity">Ethnicity</Label>
                       {isEditingPersonal ? (
-                        <Select
-                          value={customerData.ethnicity || ''}
-                          onValueChange={(value) => setCustomerData({...customerData, ethnicity: value})}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select ethnicity" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ETHNICITIES.map((eth) => (
-                              <SelectItem key={eth} value={eth}>
-                                {eth}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          <div className="space-y-3 mt-1">
+                            {/* 1. The Select acts as the "Adder" */}
+                            <Select
+                                value="" // Reset to placeholder after selection
+                                onValueChange={(value) => {
+                                  const currentEthnicities = Array.isArray(customerData.ethnicity_ids)
+                                      ? customerData.ethnicity_ids
+                                      : (customerData.ethnicity_ids ? [customerData.ethnicity_ids] : []);
+
+                                  // Only add if not already selected
+                                  if (!currentEthnicities.includes(value)) {
+                                    setCustomerData({
+                                      ...customerData,
+                                      ethnicity_ids: [...currentEthnicities, value]
+                                    });
+                                  }
+                                }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Add nationality..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ethnicitiesData.map((eth) => (
+                                    <SelectItem key={eth.id} value={eth.id}>
+                                      {eth.name}
+                                    </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+
+                            {/* 2. The Pill Container (Edit Mode) */}
+                            <div className="flex flex-wrap gap-2">
+                              {Array.isArray(customerData.ethnicity_ids) && customerData.ethnicity_ids.map((id) => {
+                                const ethnicity = countriesData.find((eth) => eth.id === id);
+                                if (!ethnicity) return null;
+
+                                return (
+                                    <button
+                                        key={id}
+                                        type="button"
+                                        onClick={() => {
+                                          const filtered = customerData.ethnicity_ids.filter((c) => c !== id);
+                                          setCustomerData({ ...customerData, ethnicity_ids: filtered });
+                                        }}
+                                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-red-50 hover:text-red-700 hover:border-red-200 rounded-full text-xs font-medium transition-all group"
+                                    >
+                                      {ethnicity.name}
+                                      <span className="text-blue-400 group-hover:text-red-500 font-bold ml-0.5">
+                                        ×
+                                      </span>
+                                    </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                       ) : (
-                        <p className="mt-1 text-gray-700">
-                          {customerData.ethnicity || 'Not provided'}
-                        </p>
+                          /* 3. Read-Only Mode */
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {Array.isArray(customerData.ethnicity_ids) && customerData.ethnicity_ids.length > 0 ? (
+                                customerData.ethnicity_ids.map((id) => {
+                                  const ethnicityName = ethnicitiesData.find((n) => n.id === id)?.name || id;
+                                  return (
+                                      <span
+                                          key={id}
+                                          className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-gray-100 text-gray-800 text-sm border border-gray-200 shadow-sm"
+                                      >
+                                        {ethnicityName}
+                                      </span>
+                                  );
+                                })
+                            ) : (
+                                <p className="text-gray-500 italic text-sm">Not provided</p>
+                            )}
+                          </div>
                       )}
                     </div>
                   </div>
@@ -678,16 +861,59 @@ const handleProfileUpdate = async (updates) => {
                   </div>
                   <div className="grid grid-cols-3 gap-4">
                     <div>
+                      <Label htmlFor="country">Country</Label>
+                      {isEditingPersonal ? (
+                          <Select
+                              id="country"
+                              value={customerData.country_id || ''}
+                              onValueChange={(value) => setCustomerData({...customerData, country_id: value})}
+                              className="mt-1"
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select country..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {countriesData.map((country) => (
+                                  <SelectItem key={country.id} value={country.id}>
+                                    {country.name}
+                                  </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                      ) : (
+                          <p className="mt-1 text-gray-700">
+                            {customerData.country_id
+                                ? countriesData.find(c => c.id === customerData.country_id)?.name || customerData.country_id
+                                : 'Not provided'}
+                          </p>
+                      )}
+                    </div>
+                    <div>
                       <Label htmlFor="city">City</Label>
                       {isEditingPersonal ? (
-                        <Input
-                          id="city"
-                          value={customerData.city || ''}
-                          onChange={(e) => setCustomerData({...customerData, city: e.target.value})}
-                          className="mt-1"
-                        />
+                          <Select
+                              id="city"
+                              value={customerData.city_id || ''}
+                              onValueChange={(value) => setCustomerData({...customerData, city_id: value})}
+                              className="mt-1"
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select city..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {citiesData.map((city) => (
+                                <SelectItem key={city.id} value={city.id}>
+                                  {city.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                       ) : (
-                        <p className="mt-1 text-gray-700">{customerData.city}</p>
+                          <p className="mt-1 text-gray-700">
+                            {customerData.city_id
+                                ? citiesData.find(c => c.id === customerData.city_id)?.name || customerData.city_id
+                                : 'Not provided'}
+                          </p>
                       )}
                     </div>
                     <div>
@@ -701,19 +927,6 @@ const handleProfileUpdate = async (updates) => {
                         />
                       ) : (
                         <p className="mt-1 text-gray-700">{customerData.postal_code}</p>
-                      )}
-                    </div>
-                    <div>
-                      <Label htmlFor="country">Country</Label>
-                      {isEditingPersonal ? (
-                        <Input
-                          id="country"
-                          value={customerData.country || ''}
-                          onChange={(e) => setCustomerData({...customerData, country: e.target.value})}
-                          className="mt-1"
-                        />
-                      ) : (
-                        <p className="mt-1 text-gray-700">{customerData.country}</p>
                       )}
                     </div>
                   </div>

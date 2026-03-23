@@ -5,7 +5,7 @@ import api from '../services/api';
 import PremiumHeaderBlocks from './PremiumHeaderBlocks';
 import './Header.css';
 
-export default function Header({ customerData, onLogout }) {
+export default function Header({ customerData, enrollment, onLogout }) {
   const [greeting, setGreeting] = useState('');
   const [barcodeUrl, setBarcodeUrl] = useState(null);
   const [showBarcodeModal, setShowBarcodeModal] = useState(false);
@@ -28,7 +28,7 @@ export default function Header({ customerData, onLogout }) {
     try {
       setLoadingBarcode(true);
       if (!barcodeUrl) {
-        const url = await api.getBarcode();
+        const url = await api.getBarcode(enrollment.id);
         setBarcodeUrl(url);
       }
       setShowBarcodeModal(true);
