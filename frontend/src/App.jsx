@@ -134,6 +134,7 @@ function App() {
 
   // State management
   const [customerData, setCustomerData] = useState(null);
+  const [enrollmentData, setEnrollmentData] = useState([]);
   const [sustainabilityData, setSustainabilityData] = useState(null);
   const [familyMembers, setFamilyMembers] = useState([]);
   const [orders, setOrders] = useState([]);
@@ -148,7 +149,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('overview');
   const [showAddFamilyModal, setShowAddFamilyModal] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
-  const [newMember, setNewMember] = useState({ name: '', relationship: '', age: '', gender: '', dietary_requirements: '' });
+  const [newMember, setNewMember] = useState({ name: '', relationship: '', date_of_birth: '', gender: '', requirements: '' });
   const [barcodeUrl, setBarcodeUrl] = useState(null);
   const [showBarcode, setShowBarcode] = useState(false);
 
@@ -165,21 +166,24 @@ function App() {
       setError(null);
 
       // Fetch all data in parallel
-      const [customer, family, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
+      const [customer, enrollments, family, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
         api.getProfile(),
+        api.getEnrollments(),
         api.getFamilyMembers(),
-        api.getOrders({ limit: 10 }),
-        api.getSubscriptions(),
-        api.getSustainability(),
-        getRecommendedOrder(),
+        // api.getOrders({ limit: 10 }),
+        // api.getSubscriptions(),
+        // api.getSustainability(),
+        // getRecommendedOrder(),
       ]);
 
       setCustomerData(customer);
+      setEnrollmentData(enrollments[0]);
+      setOrders(await api.getOrders(customer.id))
       setFamilyMembers(family);
-      setOrders(customerOrders);
-      setSubscriptions(customerSubscriptions);
-      setSustainabilityData(sustainability);
-      setRecommendedOrder(recommended);
+      // setOrders(customerOrders);
+      // setSubscriptions(customerSubscriptions);
+      // setSustainabilityData(sustainability);
+      // setRecommendedOrder(recommended);
 
     } catch (err) {
       console.error('Error loading data:', err);
@@ -266,14 +270,15 @@ const handleProfileUpdate = async (updates) => {
     try {
       const memberData = {
         ...newMember,
-        age: parseInt(newMember.age),
-        dietary_requirements: newMember.dietary_requirements ? newMember.dietary_requirements.split(",").map(r => r.trim()) : []
+        relationship: newMember.relationship.toUpperCase(),
+        date_of_birth: newMember.date_of_birth,
+        requirements: newMember.requirements ? {dietary_requirements: newMember.requirements.split(",").map(r => r.trim())} : {}
       };
 
       await api.addFamilyMember(memberData);
       await loadAllData();
       setShowAddFamilyModal(false);
-      setNewMember({ name: "", relationship: "", age: "", gender: "", dietary_requirements: "" });
+      setNewMember({ name: "", relationship: "", date_of_birth: "", gender: "", requirements: "" });
     } catch (error) {
       console.error("Error adding family member:", error);
       alert("Failed to add family member");
@@ -491,7 +496,7 @@ const handleProfileUpdate = async (updates) => {
                           className="mt-1"
                         />
                       ) : (
-                        <p className="mt-1 text-gray-700">{customerData.name}</p>
+                        <p className="mt-1 text-gray-700">{`${customerData.first_name} ${customerData.last_name}`}</p>
                       )}
                     </div>
                     <div>
@@ -743,7 +748,7 @@ const handleProfileUpdate = async (updates) => {
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <h4 className="font-semibold">{member.name}</h4>
-                            <p className="text-sm text-gray-600">{member.relationship} • Age {member.age}</p>
+                            <p className="text-sm text-gray-600">{member.relationship} • Date of birth {member.date_of_birth}</p>
                           </div>
                           <Button
                             onClick={() => handleDeleteFamilyMember(member.id)}
@@ -754,11 +759,11 @@ const handleProfileUpdate = async (updates) => {
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
-                        {member.dietary_requirements && member.dietary_requirements.length > 0 && (
+                        {member.requirements?.dietary_requirements && member.requirements.dietary_requirements.length > 0 && (
                           <div className="mt-2">
                             <p className="text-xs text-gray-500 mb-1">Dietary Requirements:</p>
                             <div className="flex flex-wrap gap-1">
-                              {member.dietary_requirements.map((req, idx) => (
+                              {member.requirements.dietary_requirements.map((req, idx) => (
                                 <Badge key={idx} variant="secondary" className="text-xs">{req}</Badge>
                               ))}
                             </div>
@@ -1053,11 +1058,11 @@ const handleProfileUpdate = async (updates) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-lg">
                     <p className="text-sm text-purple-700 mb-1">Points Balance</p>
-                    <p className="text-3xl font-bold text-purple-900">{customerData.loyalty_points?.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-purple-900">{(enrollmentData.points+enrollmentData.bonus_points)?.toLocaleString()}</p>
                   </div>
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg">
                     <p className="text-sm text-blue-700 mb-1">Member Since</p>
-                    <p className="text-3xl font-bold text-blue-900">{new Date(customerData.member_since).getFullYear()}</p>
+                    <p className="text-3xl font-bold text-blue-900">{new Date(enrollmentData.member_since).getFullYear()}</p>
                   </div>
                 </div>
 
@@ -1289,13 +1294,13 @@ const handleProfileUpdate = async (updates) => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Label htmlFor="member-age">Age *</Label>
+                  <Label htmlFor="member-age">Date of birth *</Label>
                   <Input
                     id="member-age"
-                    type="number"
-                    value={newMember.age}
-                    onChange={(e) => setNewMember({ ...newMember, age: e.target.value })}
-                    placeholder="Age"
+                    type="date"
+                    value={newMember.date_of_birth}
+                    onChange={(e) => setNewMember({ ...newMember, date_of_birth: e.target.value })}
+                    placeholder="Date of birth"
                   />
                 </div>
                 <div>
@@ -1307,9 +1312,9 @@ const handleProfileUpdate = async (updates) => {
                     className="w-full mt-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
                   >
                     <option value="">Select</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
+                    <option value="1">Male</option>
+                    <option value="2">Female</option>
+                    <option value="3">Other</option>
                   </select>
                 </div>
               </div>
@@ -1317,8 +1322,8 @@ const handleProfileUpdate = async (updates) => {
                 <Label htmlFor="member-dietary">Dietary Requirements</Label>
                 <Input
                   id="member-dietary"
-                  value={newMember.dietary_requirements}
-                  onChange={(e) => setNewMember({ ...newMember, dietary_requirements: e.target.value })}
+                  value={newMember.requirements}
+                  onChange={(e) => setNewMember({ ...newMember, requirements: e.target.value })}
                   placeholder="e.g., Vegetarian, No nuts (comma separated)"
                 />
               </div>
@@ -1333,7 +1338,7 @@ const handleProfileUpdate = async (updates) => {
                 <Button
                   onClick={handleAddFamilyMember}
                   className="flex-1 bg-[oklch(0.35_0.12_15)] hover:bg-[oklch(0.30_0.12_15)] text-white"
-                  disabled={!newMember.name || !newMember.relationship || !newMember.age}
+                  disabled={!newMember.name || !newMember.relationship || !newMember.date_of_birth}
                 >
                   Add Member
                 </Button>

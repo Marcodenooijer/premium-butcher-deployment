@@ -2,9 +2,11 @@ import React, { useState } from 'react';
 import { ShoppingCart, ChevronRight, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import api from "@/services/api.js";
 
 const OrdersSection = ({ orders }) => {
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [orderItems, setOrderItems] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const getStatusColor = (status) => {
@@ -32,6 +34,8 @@ const OrdersSection = ({ orders }) => {
         return 'Shipped';
       case 'delivered':
         return 'Delivered';
+      case 'PAID':
+        return 'Paid';
       default:
         return 'Unknown';
     }
@@ -51,7 +55,7 @@ const OrdersSection = ({ orders }) => {
     const orderItems = orders.filter(item => item.order_number === orderNumber);
     const itemCount = orderItems.length;
     const orderTotal = orderItems.reduce((sum, item) => {
-      const price = item.total_price || (item.price * item.quantity) || 0;
+      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
       return sum + (typeof price === 'string' ? parseFloat(price) : price);
     }, 0);
     return { itemCount, orderTotal };
@@ -63,18 +67,21 @@ const OrdersSection = ({ orders }) => {
       orders.map(order => [
         order.order_number,
         {
+          id: order.id,
           order_number: order.order_number,
-          order_date: order.order_date,
+          order_date: order.created_at,
           status: order.status || 'pending',
-          delivery_date: order.delivery_date,
+          delivery_date: order.estimated_delivery_from,
           items: orders.filter(item => item.order_number === order.order_number),
         },
       ])
     ).values()
   );
 
-  const handleOrderClick = (order) => {
+  const handleOrderClick = async (order) => {
     setSelectedOrder(order);
+    const orderItems = await api.getOrderItems(order.id)
+    setOrderItems(orderItems);
     setIsModalOpen(true);
   };
 
@@ -145,7 +152,7 @@ const OrdersSection = ({ orders }) => {
                     >
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-2">
-                          <span className="font-semibold text-gray-900">#{order.order_number}</span>
+                          <span className="font-semibold text-gray-900">{order.order_number}</span>
                           <ChevronRight className="w-4 h-4 text-gray-400" />
                         </div>
                       </td>
@@ -242,8 +249,8 @@ const OrdersSection = ({ orders }) => {
                 <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
                   <p className="text-xs text-amber-700 uppercase tracking-wide font-semibold">Order Total</p>
                   <p className="mt-2 text-2xl font-bold text-amber-900">
-                    €{selectedOrder.items.reduce((sum, item) => {
-                      const price = item.total_price || (item.price * item.quantity) || 0;
+                    €{orderItems.reduce((sum, item) => {
+                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </p>
@@ -254,22 +261,22 @@ const OrdersSection = ({ orders }) => {
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Order Items</h3>
                 <div className="space-y-3 border border-gray-200 rounded-lg overflow-hidden">
-                  {selectedOrder.items.map((item, index) => (
+                  {orderItems.map((item, index) => (
                     <div
                       key={item.id || index}
                       className={`px-4 py-3 flex justify-between items-center ${
-                        index !== selectedOrder.items.length - 1 ? 'border-b border-gray-200' : ''
+                        index !== orderItems.length - 1 ? 'border-b border-gray-200' : ''
                       }`}
                     >
                       <div className="flex-1">
-                        <p className="font-medium text-gray-900">{item.product_name}</p>
+                        <p className="font-medium text-gray-900">{item.name}</p>
                         <p className="text-xs text-gray-500 mt-1">SKU: {item.product_sku}</p>
                       </div>
                       <div className="text-right ml-4">
                         <p className="text-sm text-gray-600">
-                          {item.quantity} × €{(typeof item.price === 'string' ? parseFloat(item.price) : item.price).toFixed(2)}
+                          {item.quantity} × €{(typeof item.discounted_price === 'string' ? parseFloat(item.discounted_price) : item.discounted_price).toFixed(2)}
                         </p>
-                        <p className="font-semibold text-gray-900">€{(typeof (item.total_price || item.quantity * item.price) === 'string' ? parseFloat(item.total_price || item.quantity * item.price) : (item.total_price || item.quantity * item.price)).toFixed(2)}</p>
+                        <p className="font-semibold text-gray-900">€{(typeof (item.total_price || item.quantity * item.discounted_price) === 'string' ? parseFloat(item.total_price || item.quantity * item.discounted_price) : (item.total_price || item.quantity * item.discounted_price)).toFixed(2)}</p>
                       </div>
                     </div>
                   ))}
@@ -281,8 +288,8 @@ const OrdersSection = ({ orders }) => {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-700 font-medium">Subtotal</span>
                   <span className="text-gray-900">
-                    €{selectedOrder.items.reduce((sum, item) => {
-                      const price = item.total_price || (item.price * item.quantity) || 0;
+                    €{orderItems.reduce((sum, item) => {
+                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </span>
@@ -294,8 +301,8 @@ const OrdersSection = ({ orders }) => {
                 <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-300">
                   <span className="text-lg font-bold text-gray-900">Total</span>
                   <span className="text-lg font-bold text-amber-900">
-                    €{selectedOrder.items.reduce((sum, item) => {
-                      const price = item.total_price || (item.price * item.quantity) || 0;
+                    €{orderItems.reduce((sum, item) => {
+                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </span>

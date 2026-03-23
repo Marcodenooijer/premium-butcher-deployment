@@ -16,7 +16,7 @@ function PremiumHeaderBlocks() {
       try {
         // Use allSettled so one failure doesn't break everything
         const results = await Promise.allSettled([
-          api.getHeaderLoyaltyPoints(),
+          api.getEnrollments(),
           api.getHeaderRewards(),
           api.getHeaderTipOfDay(),
           api.getHeaderNextEvent()
@@ -24,7 +24,7 @@ function PremiumHeaderBlocks() {
 
         // Process Loyalty Points
         if (results[0].status === 'fulfilled') {
-          setLoyaltyPoints(results[0].value.points || 0)
+          setLoyaltyPoints(results[0].value[0].points+results[0].value[0].bonus_points || 0)
         } else {
           console.error('Loyalty points failed:', results[0].reason)
         }

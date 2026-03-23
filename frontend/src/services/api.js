@@ -2,7 +2,7 @@
 // Updated with NO CACHING - all requests are fresh from server
 import { getUserTokenNew as getUserToken } from '../firebase';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const getAuthHeaders = async () => {
   const token = await getUserToken();
@@ -41,12 +41,27 @@ const apiCall = async (endpoint, options = {}) => {
     throw new Error(error.error || `HTTP error! status: ${response.status}`);
   }
 
+  if (response.status === 204) {
+    return undefined;
+  }
+
   return response.json();
 };
 
 export const api = {
+  signInWithProvider: async (provider, data) => {
+    return apiCall(`/auth/${provider}`, {
+        method: 'POST',
+        body: JSON.stringify(data)
+    });
+  },
+
+  getEnrollments: async ()=> {
+    return apiCall('/loyalty-programs/enrollments');
+  },
+
   getProfile: async () => {
-    return apiCall('/api/profile');
+    return apiCall('/customer/profile');
   },
 
   updateProfile: async (data) => {
@@ -57,32 +72,36 @@ export const api = {
   },
 
   getFamilyMembers: async () => {
-    return apiCall('/api/profile/family');
+    return apiCall('/customer/family-members');
   },
 
   addFamilyMember: async (data) => {
-    return apiCall('/api/profile/family', {
+    return apiCall('/customer/family-members', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
   updateFamilyMember: async (memberId, data) => {
-    return apiCall(`/api/profile/family/${memberId}`, {
+    return apiCall(`/customer/family-members/${memberId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
     });
   },
 
   deleteFamilyMember: async (memberId) => {
-    return apiCall(`/api/profile/family/${memberId}`, {
+    return apiCall(`/customer/family-members/${memberId}`, {
       method: 'DELETE',
     });
   },
 
-  getOrders: async (params = {}) => {
+  getOrders: async (customerId, params = {}) => {
     const queryString = new URLSearchParams(params).toString();
-    return apiCall(`/api/profile/orders${queryString ? `?${queryString}` : ''}`);
+    return apiCall(`/customer/${customerId}/recent-orders${queryString ? `?${queryString}` : ''}`);
+  },
+
+  getOrderItems: async (orderId) => {
+    return apiCall(`/orders/${orderId}/items`);
   },
 
   getSubscriptions: async () => {
@@ -98,7 +117,7 @@ export const api = {
 
   // Header blocks API methods
   getHeaderLoyaltyPoints: async () => {
-    return apiCall('/api/header/loyalty-points');
+    return apiCall('/customer/header/loyalty-points');
   },
 
   getHeaderRewards: async () => {

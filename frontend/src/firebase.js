@@ -10,6 +10,7 @@ import {
   signOut,
   sendPasswordResetEmail
 } from 'firebase/auth';
+import api from "@/services/api.js";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -32,8 +33,7 @@ export const googleProvider = new GoogleAuthProvider();
 // Google Sign-In
 export const signInWithGoogle = async () => {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    await signInWithProvider(googleProvider);
   } catch (error) {
     console.error('Error signing in with Google:', error);
     throw error;
@@ -75,13 +75,20 @@ export const resetPassword = async (email) => {
 // Facebook Sign-In
 export const signInWithFacebook = async () => {
   try {
-    const result = await signInWithPopup(auth, facebookProvider);
-    return result.user;
+    await signInWithProvider(facebookProvider);
   } catch (error) {
     console.error("Error signing in with Facebook:", error);
     throw error;
   }
 };
+
+export async function signInWithProvider(provider) {
+  const result = await signInWithPopup(auth, provider);
+  await api.signInWithProvider('firebase', {
+    realm: 'CUSTOMERS',
+    token: result.user.accessToken
+  })
+}
 
 
 // Logout
