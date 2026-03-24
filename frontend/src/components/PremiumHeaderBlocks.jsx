@@ -3,6 +3,7 @@ import api from '../services/api'
 import {
   Star, Gift, Heart, Calendar, ExternalLink
 } from 'lucide-react'
+import loyaltyApi from "@/services/loyaltyApi.js";
 
 function PremiumHeaderBlocks() {
   const [loyaltyPoints, setLoyaltyPoints] = useState(0)
@@ -16,7 +17,7 @@ function PremiumHeaderBlocks() {
       try {
         // Use allSettled so one failure doesn't break everything
         const results = await Promise.allSettled([
-          api.getEnrollments(),
+          loyaltyApi.getEnrollments(),
           api.getHeaderRewards(),
           api.getHeaderTipOfDay(),
           api.getHeaderNextEvent()

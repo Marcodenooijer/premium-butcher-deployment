@@ -56,10 +56,6 @@ export const api = {
     });
   },
 
-  getEnrollments: async ()=> {
-    return apiCall('/loyalty-programs/enrollments');
-  },
-
   getProfile: async () => {
     return apiCall('/customer/profile');
   },

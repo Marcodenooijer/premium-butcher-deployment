@@ -8,10 +8,10 @@
  * Uses the same auth pattern as your existing api.js (Firebase getUserTokenNew).
  */
 
-import { getUserTokenNew as getUserToken } from '../firebase';
+import {getUserTokenNew as getUserToken} from '../firebase';
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
-const LOYALTY_BASE = `${API_BASE}/api/loyalty-store`;
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const LOYALTY_BASE = `${API_BASE}/loyalty-programs`;
 
 async function loyaltyFetch(endpoint, options = {}) {
   const { method = 'GET', body } = options;
@@ -42,15 +42,15 @@ async function loyaltyFetch(endpoint, options = {}) {
 
 // ─── Points Balance ─────────────────────────────────────────────
 
-export async function getBalance() {
-  return loyaltyFetch('/balance');
+export async function getEnrollments() {
+  return await loyaltyFetch('/enrollments');
 }
 
 // ─── Products ───────────────────────────────────────────────────
 
-export async function getProducts() {
-  const data = await loyaltyFetch('/products');
-  return data.products;
+export async function getProducts(loyaltyProgramId) {
+  const data = await loyaltyFetch(`/${loyaltyProgramId}/product-variants`);
+  return data.results;
 }
 
 export async function getAffordableProducts() {
@@ -64,30 +64,31 @@ export async function getProduct(productId) {
 
 // ─── Redemptions ────────────────────────────────────────────────
 
-export async function redeemProduct(productId, redemptionType = 'online') {
-  return loyaltyFetch('/redeem', {
+export async function redeemProduct(enrollmentId, productId, channel_id) {
+  return loyaltyFetch(`/enrollments/${enrollmentId}/redemptions`, {
     method: 'POST',
-    body: { productId, redemptionType },
+    body: { loyalty_product_id: productId, redemption_channel_id: channel_id },
   });
 }
 
 export async function cancelRedemption(redemptionId) {
-  return loyaltyFetch('/cancel', {
-    method: 'POST',
-    body: { redemptionId },
+  return loyaltyFetch(`/redemptions/${redemptionId}/cancel`, {
+    method: 'POST'
   });
 }
 
-export async function getRedemptions() {
-  const data = await loyaltyFetch('/redemptions');
-  return data.redemptions;
+export async function getRedemptionChannels(enrollmentId) {
+  return await loyaltyFetch(`/enrollments/${enrollmentId}/redemption-channels`);
+}
+
+export async function getRedemptions(enrollmentId) {
+  return await loyaltyFetch(`/enrollments/${enrollmentId}/redemptions`);
 }
 
 // ─── Transactions ───────────────────────────────────────────────
 
-export async function getTransactions() {
-  const data = await loyaltyFetch('/transactions');
-  return data.transactions;
+export async function getTransactions(enrollmentId) {
+  return await loyaltyFetch(`/enrollments/${enrollmentId}/transactions`)
 }
 
 // ─── Health Check ───────────────────────────────────────────────
@@ -97,7 +98,8 @@ export async function healthCheck() {
 }
 
 export default {
-  getBalance,
+  getEnrollments,
+  getRedemptionChannels,
   getProducts,
   getAffordableProducts,
   getProduct,

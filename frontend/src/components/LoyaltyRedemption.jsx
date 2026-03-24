@@ -80,9 +80,9 @@ function useCountdown(expiresAt) {
 const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
-  const countdown = useCountdown(redemption.expiresAt);
-  const isPending = redemption.status === 'pending';
-  const isOnline = redemption.redemptionType === 'online';
+  const countdown = useCountdown(redemption.expires_at);
+  const isPending = redemption.status === 'PENDING';
+  const isOnline = redemption.external_connection_type === 'SHOPIFY';
 
   const copyCode = async (code) => {
     await navigator.clipboard.writeText(code);
@@ -91,24 +91,24 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
   };
 
   const statusColors = {
-    pending: 'bg-amber-100 text-amber-800',
-    completed: 'bg-green-100 text-green-800',
-    cancelled: 'bg-gray-100 text-gray-600',
-    expired: 'bg-red-100 text-red-700',
+    PENDING: 'bg-amber-100 text-amber-800',
+    REDEEMED: 'bg-green-100 text-green-800',
+    CANCELLED: 'bg-gray-100 text-gray-600',
+    EXPIRED: 'bg-red-100 text-red-700',
   };
 
   const statusLabels = {
-    pending: t('loyalty.store.pending', 'In afwachting'),
-    completed: t('loyalty.store.completed', 'Voltooid'),
-    cancelled: t('loyalty.store.cancelled', 'Geannuleerd'),
-    expired: t('loyalty.store.expired', 'Verlopen'),
+    PENDING: t('loyalty.store.pending', 'In afwachting'),
+    REDEEMED: t('loyalty.store.completed', 'Voltooid'),
+    CANCELLED: t('loyalty.store.cancelled', 'Geannuleerd'),
+    EXPIRED: t('loyalty.store.expired', 'Verlopen'),
   };
 
   return (
     <div className="p-4 border rounded-lg bg-white space-y-3">
       <div className="flex items-start justify-between">
         <div>
-          <h4 className="font-semibold text-gray-900">{redemption.productName}</h4>
+          <h4 className="font-semibold text-gray-900">{redemption.product_name}</h4>
           <div className="flex items-center gap-2 mt-1">
             <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[redemption.status] || 'bg-gray-100'}`}>
               {statusLabels[redemption.status] || redemption.status}
@@ -120,20 +120,20 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
           </div>
         </div>
         <span className="text-sm font-semibold text-[oklch(0.35_0.12_15)]">
-          {redemption.pointsCost?.toLocaleString('nl-NL')} pts
+          {(redemption.points_spent+redemption.bonus_points_spent)?.toLocaleString('nl-NL')} pts
         </span>
       </div>
 
       {/* Promo code or barcode */}
-      {isPending && redemption.promoCode && (
+      {isPending && redemption.code && (
         <div className="space-y-2">
           {isOnline ? (
             <div className="flex items-center gap-2">
               <code className="flex-1 px-3 py-2 bg-gray-50 border rounded font-mono text-sm tracking-wider text-center">
-                {redemption.promoCode}
+                {redemption.code}
               </code>
               <button
-                onClick={() => copyCode(redemption.promoCode)}
+                onClick={() => copyCode(redemption.code)}
                 className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
                 title={t('loyalty.store.copy', 'Kopiëren')}
               >
@@ -143,14 +143,14 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
           ) : (
             <div className="space-y-1">
               <BarcodeDisplay
-                value={redemption.ean13Barcode || redemption.promoCode}
+                value={redemption.ean13Barcode || redemption.code}
                 format={redemption.ean13Barcode ? 'EAN13' : 'CODE128'}
               />
             </div>
           )}
 
           {/* Expiration countdown */}
-          {redemption.expiresAt && (
+          {redemption.expires_at && (
             <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2 py-1 rounded">
               <Clock className="w-3 h-3" />
               {t('loyalty.store.expiresIn', 'Verloopt over')}: {countdown}
@@ -190,7 +190,7 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
 
       {/* Date */}
       <p className="text-xs text-gray-500">
-        {new Date(redemption.createdAt).toLocaleDateString('nl-NL', {
+        {new Date(redemption.created_at).toLocaleDateString('nl-NL', {
           day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
         })}
       </p>
@@ -221,7 +221,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
   const { t } = useTranslation();
 
   // State
-  const [balance, setBalance] = useState(null);
+  const [enrollmentData, setEnrollmentData] = useState(null);
   const [products, setProducts] = useState([]);
   const [redemptions, setRedemptions] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -242,20 +242,27 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
   const [cancellingId, setCancellingId] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const [redemptionChannels, setRedemptionChannels] = useState([]);
+
   // ─── Data loading ─────────────────────────────────────────────
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const [balanceData, productsData, redemptionsData, transactionsData] = await Promise.all([
-        loyaltyApi.getBalance(),
-        loyaltyApi.getProducts(),
-        loyaltyApi.getRedemptions(),
-        loyaltyApi.getTransactions(),
+      const [enrollments] = await Promise.all([
+        loyaltyApi.getEnrollments(),
       ]);
 
-      setBalance(balanceData);
+      const enrollment = enrollments[0]
+
+      const [productsData, redemptionsData, transactionsData] = await Promise.all([
+          await loyaltyApi.getProducts(enrollment.program_id),
+          await loyaltyApi.getRedemptions(enrollment.id),
+          await loyaltyApi.getTransactions(enrollment.id),
+      ])
+
+      setEnrollmentData(enrollment);
       setProducts(productsData || []);
       setRedemptions(redemptionsData || []);
       setTransactions(transactionsData || []);
@@ -274,22 +281,25 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
   // ─── Filtering ────────────────────────────────────────────────
   const categories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
 
-  const availablePoints = balance?.available ?? balance?.availablePoints ?? balance?.balance ?? 0;
-  const reservedPoints = balance?.reserved ?? balance?.reservedPoints ?? 0;
-  const totalPoints = balance?.total ?? balance?.balance ?? availablePoints;
+  const availablePoints = (enrollmentData?.points + enrollmentData?.bonus_points) ?? 0
+  const reservedPoints = enrollmentData?.reserved_points ?? 0;
+  const totalPoints = availablePoints ?? 0;
 
   const filteredProducts = products.filter(p => {
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     if (selectedCategory !== 'all' && p.category !== selectedCategory) return false;
-    if (showAffordableOnly && p.pointsCost > availablePoints) return false;
+    if (showAffordableOnly && p.points > availablePoints) return false;
     return true;
   });
 
-  const pendingRedemptions = redemptions.filter(r => r.status === 'pending');
+  const pendingRedemptions = redemptions.filter(r => r.status === 'PENDING');
 
   // ─── Redeem flow ──────────────────────────────────────────────
-  const openRedeemDialog = (product) => {
+  const openRedeemDialog = async (product) => {
+    const redemptionChannelsData = await loyaltyApi.getRedemptionChannels(enrollmentData.id)
+    setRedemptionChannels(redemptionChannelsData);
+
     setSelectedProduct(product);
     setDialogStep('choice');
     setRedeemResult(null);
@@ -303,14 +313,14 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
     setCopied(false);
   };
 
-  const handleRedeem = async (type) => {
+  const handleRedeem = async (channelId) => {
     if (!selectedProduct) return;
     setDialogStep('processing');
     setRedeeming(true);
 
     try {
-      const result = await loyaltyApi.redeemProduct(selectedProduct.id, type);
-      setRedeemResult({ ...result, redemptionType: type });
+      const result = await loyaltyApi.redeemProduct(enrollmentData.id, selectedProduct.id, channelId);
+      setRedeemResult({ ...result, redemptionType: channelId });
       setDialogStep('success');
       await loadData();
       onPointsChange?.();
@@ -503,7 +513,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredProducts.map(product => {
-                  const canAfford = availablePoints >= product.pointsCost;
+                  const canAfford = availablePoints >= product.points;
                   return (
                     <div
                       key={product.id}
@@ -512,10 +522,10 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                       }`}
                     >
                       {/* Product image */}
-                      {product.imageUrl && (
+                      {product.image_url && (
                         <div className="h-40 bg-gray-100 overflow-hidden">
                           <img
-                            src={product.imageUrl}
+                            src={product.image_url}
                             alt={product.name}
                             className="w-full h-full object-cover"
                             onError={(e) => { e.target.style.display = 'none'; }}
@@ -532,7 +542,9 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                           )}
                         </div>
                         {product.description && (
-                          <p className="text-xs text-gray-500 line-clamp-2">{product.description}</p>
+                          <p className="text-xs text-gray-500 line-clamp-2">
+                            {product.description}
+                          </p>
                         )}
                         {/* Shopify badge */}
                         {product.shopifyProductUrl && (
@@ -543,7 +555,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         <div className="flex items-center justify-between pt-2">
                           <span className="font-bold text-[oklch(0.35_0.12_15)]">
                             <Coins className="w-4 h-4 inline mr-1" />
-                            {product.pointsCost?.toLocaleString('nl-NL')} pts
+                            {product.points?.toLocaleString('nl-NL')} pts
                           </span>
                           <button
                             onClick={() => openRedeemDialog(product)}
@@ -604,7 +616,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
             ) : (
               <div className="space-y-2">
                 {transactions.map((tx, i) => {
-                  const isPositive = tx.type === 'earn' || tx.type === 'refund' || tx.type === 'credit';
+                  const isPositive = tx.type === 'EARN' || tx.type === 'REFUND' || tx.type === 'CREDIT';
                   return (
                     <div key={tx.id || i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-3">
@@ -617,14 +629,14 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         <div>
                           <p className="text-sm font-medium text-gray-900">{tx.description}</p>
                           <p className="text-xs text-gray-500">
-                            {new Date(tx.createdAt).toLocaleDateString('nl-NL', {
+                            {new Date(tx.created_at).toLocaleDateString('nl-NL', {
                               day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit'
                             })}
                           </p>
                         </div>
                       </div>
                       <span className={`text-sm font-semibold ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                        {isPositive ? '+' : '-'}{Math.abs(tx.amount).toLocaleString('nl-NL')} pts
+                        {isPositive ? '+' : '-'}{Math.abs(tx.points).toLocaleString('nl-NL')} pts
                       </span>
                     </div>
                   );
@@ -657,44 +669,39 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
             <div className="p-4 space-y-4">
               {/* Product info */}
               <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                {selectedProduct.imageUrl && (
-                  <img src={selectedProduct.imageUrl} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                {selectedProduct.image_url && (
+                  <img src={selectedProduct.image_url} alt="" className="w-12 h-12 rounded-lg object-cover" />
                 )}
                 <div className="flex-1">
                   <p className="font-semibold text-sm">{selectedProduct.name}</p>
                   <p className="text-sm text-[oklch(0.35_0.12_15)] font-bold">
-                    {selectedProduct.pointsCost?.toLocaleString('nl-NL')} {t('loyalty.store.points', 'punten')}
+                    {selectedProduct.points?.toLocaleString('nl-NL')} {t('loyalty.store.points', 'punten')}
                   </p>
                 </div>
               </div>
 
               {/* Step: Choice — Online or In-Store */}
               {dialogStep === 'choice' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleRedeem('online')}
-                    className="flex flex-col items-center gap-3 p-6 border-2 rounded-xl hover:border-[oklch(0.35_0.12_15)] hover:bg-gray-50 transition-all group"
-                  >
-                    <Monitor className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors" />
-                    <div className="text-center">
-                      <p className="font-semibold text-gray-900">Online</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t('loyalty.store.onlineDesc', 'Kortingscode voor Shopify')}
-                      </p>
-                    </div>
-                  </button>
-                  <button
-                    onClick={() => handleRedeem('instore')}
-                    className="flex flex-col items-center gap-3 p-6 border-2 rounded-xl hover:border-[oklch(0.35_0.12_15)] hover:bg-gray-50 transition-all group"
-                  >
-                    <Store className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors" />
-                    <div className="text-center">
-                      <p className="font-semibold text-gray-900">{t('loyalty.store.inStore', 'In winkel')}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        {t('loyalty.store.inStoreDesc', 'Barcode tonen aan de kassa')}
-                      </p>
-                    </div>
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                      {redemptionChannels.map((channel, i) => (
+                        <button
+                          onClick={() => handleRedeem(channel.id)}
+                          className="flex flex-col items-center gap-3 p-6 border-2 rounded-xl hover:border-[oklch(0.35_0.12_15)] hover:bg-gray-50 transition-all group"
+                      >
+                            {channel.external_connection_type === 'SHOPIFY' && <Monitor
+                              className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors"/>
+                            }
+                            {channel.external_connection_type === 'DIGI' && <Store className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors" />
+                            }
+
+                          <div className="text-center">
+                              <p className="font-semibold text-gray-900">{channel.title}</p>
+                              <p className="text-xs text-gray-500 mt-1">
+                                  {channel.description}
+                              </p>
+                          </div>
+                        </button>
+                      ))}
                 </div>
               )}
 
@@ -712,7 +719,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                   <div className="flex items-center gap-2 p-3 bg-green-50 text-green-800 rounded-lg">
                     <Check className="w-5 h-5" />
                     <p className="text-sm font-medium">
-                      {redeemResult.pointsCost?.toLocaleString('nl-NL')} {t('loyalty.store.pointsReserved', 'punten gereserveerd')}
+                      {redeemResult.points_spent?.toLocaleString('nl-NL')} {t('loyalty.store.pointsReserved', 'punten gereserveerd')}
                     </p>
                   </div>
 
@@ -724,10 +731,10 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         </Label>
                         <div className="flex items-center gap-2">
                           <code className="flex-1 px-4 py-3 bg-gray-50 border rounded-lg font-mono text-lg tracking-widest text-center font-bold">
-                            {redeemResult.promoCode}
+                            {redeemResult.code}
                           </code>
                           <button
-                            onClick={() => copyCode(redeemResult.promoCode)}
+                            onClick={() => copyCode(redeemResult.code)}
                             className="p-3 rounded-lg border hover:bg-gray-50 transition-colors"
                           >
                             {copied ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5 text-gray-500" />}
@@ -752,7 +759,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         {t('loyalty.store.showBarcode', 'Toon deze barcode aan de kassa')}
                       </Label>
                       <BarcodeDisplay
-                        value={redeemResult.ean13Barcode || redeemResult.promoCode}
+                        value={redeemResult.ean13Barcode || redeemResult.code}
                         format={redeemResult.ean13Barcode ? 'EAN13' : 'CODE128'}
                       />
                     </div>

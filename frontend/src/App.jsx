@@ -54,6 +54,7 @@ import Header from './components/Header';
 import MeatPreferences from './components/MeatPreferences';
 import CulinaryProfile from './components/CulinaryProfile';
 import {cn} from "@/lib/utils.js";
+import loyaltyApi from "@/services/loyaltyApi.js";
 
 // ISO 639-1 Language Codes (common European languages)
 const LANGUAGES = [
@@ -180,7 +181,7 @@ function App() {
       // Fetch all data in parallel
       const [customer, enrollments, family, languages,  countries, ethnicities, customerOrders, customerSubscriptions, sustainability, recommended] = await Promise.all([
         api.getProfile(),
-        api.getEnrollments(),
+        loyaltyApi.getEnrollments(),
         api.getFamilyMembers(),
         api.getLanguages(),
         api.getCountries(),
