@@ -7,6 +7,19 @@ import { Switch } from '@/components/ui/switch';
 import { Flame, Clock, Utensils } from 'lucide-react';
 
 const CulinaryProfile = ({ profile, onUpdate }) => {
+  const [updateDebounce, setUpdateDebounce] = useState(null);
+
+  function onDebouncedUpdate(payload) {
+    if (updateDebounce) {
+      clearTimeout(updateDebounce);
+    }
+
+    const timeoutId = setTimeout(() => {
+      onUpdate(payload);
+    },800);
+    setUpdateDebounce(timeoutId)
+  }
+
   const { t } = useTranslation();
   const [preferences, setPreferences] = useState({
     cooking_skill_level: profile?.cooking_skill_level || 'intermediate',
@@ -61,7 +74,7 @@ const CulinaryProfile = ({ profile, onUpdate }) => {
           ? prev.cooking_equipment.filter(e => e !== equipment)
           : [...prev.cooking_equipment, equipment]
       };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };
@@ -69,7 +82,7 @@ const CulinaryProfile = ({ profile, onUpdate }) => {
   const handleInputChange = (field, value) => {
     setPreferences(prev => {
       const updated = { ...prev, [field]: value };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };
@@ -77,7 +90,7 @@ const CulinaryProfile = ({ profile, onUpdate }) => {
   const handleToggle = (field) => {
     setPreferences(prev => {
       const updated = { ...prev, [field]: !prev[field] };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };

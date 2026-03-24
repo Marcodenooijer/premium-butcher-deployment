@@ -7,6 +7,20 @@ import { Switch } from '@/components/ui/switch';
 import { Heart, X } from 'lucide-react';
 
 const MeatPreferences = ({ profile, onUpdate }) => {
+  const [updateDebounce, setUpdateDebounce] = useState(null);
+
+  function onDebouncedUpdate(payload) {
+    if (updateDebounce) {
+      clearTimeout(updateDebounce);
+    }
+
+    const timeoutId = setTimeout(() => {
+      onUpdate(payload);
+    },800);
+    setUpdateDebounce(timeoutId)
+  }
+
+
   const { t } = useTranslation();
   const [preferences, setPreferences] = useState({
     favorite_meat_types: profile?.favorite_meat_types || [],
@@ -61,7 +75,7 @@ const MeatPreferences = ({ profile, onUpdate }) => {
           ? prev.favorite_meat_types.filter(m => m !== meat)
           : [...prev.favorite_meat_types, meat]
       };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };
@@ -74,7 +88,7 @@ const MeatPreferences = ({ profile, onUpdate }) => {
           ? prev.preferred_cuts.filter(c => c !== cut)
           : [...prev.preferred_cuts, cut]
       };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };
@@ -82,7 +96,7 @@ const MeatPreferences = ({ profile, onUpdate }) => {
   const handleToggle = (field) => {
     setPreferences(prev => {
       const updated = { ...prev, [field]: !prev[field] };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };
@@ -90,7 +104,7 @@ const MeatPreferences = ({ profile, onUpdate }) => {
   const handleInputChange = (field, value) => {
     setPreferences(prev => {
       const updated = { ...prev, [field]: value };
-      onUpdate(updated);
+      onDebouncedUpdate(updated);
       return updated;
     });
   };

@@ -238,7 +238,7 @@ const handleProfileUpdate = async (updates) => {
     // Merge updates with existing customer data
     const updatedData = {
       ...customerData,
-      ...updates
+        preferences: {...customerData.preferences, ...updates}
     };
 
     // Update local state immediately for UI responsiveness
@@ -566,18 +566,19 @@ const handleProfileUpdate = async (updates) => {
                               Use secondary email for communications
                             </Label>
                             <p className="text-xs text-gray-500 mt-1">
-                              {customerData.primary_email_for_communication === 'secondary'
+                              {customerData.secondary_email_communications
                                 ? `Using: ${customerData.secondary_email}`
                                 : `Using: ${customerData.email}`}
                             </p>
                           </div>
                           <Switch
                             id="primary_email_switch"
-                            checked={customerData.primary_email_for_communication === 'secondary'}
+                            disabled={!isEditingPersonal}
+                            checked={customerData.secondary_email_communications}
                             onCheckedChange={(checked) => {
                               setCustomerData({
                                 ...customerData,
-                                primary_email_for_communication: checked ? 'secondary' : 'primary'
+                                secondary_email_communications: checked
                               });
                             }}
                           />
@@ -1067,7 +1068,7 @@ const handleProfileUpdate = async (updates) => {
           </TabsContent>
           <TabsContent value="preferences" className="space-y-6">
             <MeatPreferences
-              profile={customerData}
+              profile={customerData.preferences}
               onChange={setCustomerData}
               isEditing={isEditingPreferences}
               onEditToggle={() => setIsEditingPreferences(!isEditingPreferences)}
@@ -1076,7 +1077,7 @@ const handleProfileUpdate = async (updates) => {
               saving={saving}
             />
             <CulinaryProfile
-              profile={customerData}
+              profile={customerData.preferences}
               onChange={setCustomerData}
               onUpdate={handleProfileUpdate}
               isEditing={isEditingPreferences}
