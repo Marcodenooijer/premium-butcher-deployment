@@ -25,7 +25,7 @@ function PremiumHeaderBlocks() {
 
         // Process Loyalty Points
         if (results[0].status === 'fulfilled') {
-          setLoyaltyPoints(results[0].value[0].points+results[0].value[0].bonus_points || 0)
+          setLoyaltyPoints(results[0].value[0].points+results[0].value[0].bonus_points+results[0].value[0].reserved_points || 0)
         } else {
           console.error('Loyalty points failed:', results[0].reason)
         }

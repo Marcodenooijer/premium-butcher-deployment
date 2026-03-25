@@ -10,6 +10,7 @@ import {
   Award, Undo2, CheckCircle2, XCircle, Timer, Package
 } from 'lucide-react';
 import loyaltyApi from '../services/loyaltyApi';
+import {Button} from "@/components/ui/button.jsx";
 
 // ─── Barcode component (uses JsBarcode — install: npm install jsbarcode) ──
 const BarcodeDisplay = ({ value, format = 'CODE128' }) => {
@@ -283,7 +284,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
 
   const availablePoints = (enrollmentData?.points + enrollmentData?.bonus_points) ?? 0
   const reservedPoints = enrollmentData?.reserved_points ?? 0;
-  const totalPoints = availablePoints ?? 0;
+  const totalPoints = (availablePoints + reservedPoints) ?? 0;
 
   const filteredProducts = products.filter(p => {
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
@@ -542,10 +543,22 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                           {product.description}
                         </p>
                         {/* Shopify badge */}
-                        {product.url && (
-                          <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                            <ExternalLink className="w-3 h-3" /> Shopify
-                          </span>
+                        {product.channel_links && (
+                            product.channel_links
+                                .filter(channel_link => channel_link.external_connection_type === 'SHOPIFY')
+                                .map(channel_link =>
+                                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                      <a
+                                          href={channel_link.product_url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        {channel_link.channel_name}
+                                      </a>
+                                    </span>
+                                )
                         )}
                         <div className="flex items-center justify-between pt-2">
                           <span className="font-bold text-[oklch(0.35_0.12_15)]">

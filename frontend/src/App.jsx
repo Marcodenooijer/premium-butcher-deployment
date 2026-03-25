@@ -1274,7 +1274,7 @@ const handleProfileUpdate = async (updates) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-lg">
                     <p className="text-sm text-purple-700 mb-1">Points Balance</p>
-                    <p className="text-3xl font-bold text-purple-900">{(enrollmentData.points+enrollmentData.bonus_points)?.toLocaleString()}</p>
+                    <p className="text-3xl font-bold text-purple-900">{(enrollmentData.points+enrollmentData.bonus_points+enrollmentData.reserved_points)?.toLocaleString()}</p>
                   </div>
                   <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg">
                     <p className="text-sm text-blue-700 mb-1">Member Since</p>
