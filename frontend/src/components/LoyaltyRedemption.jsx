@@ -158,9 +158,9 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
           )}
 
           {/* Shopify link for online */}
-          {isOnline && redemption.shopifyProductUrl && (
+          {isOnline && redemption.product_url && (
             <a
-              href={redemption.shopifyProductUrl}
+              href={redemption.product_url}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1.5 text-xs text-blue-600 hover:text-blue-800 transition-colors"
@@ -320,10 +320,10 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
 
     try {
       const result = await loyaltyApi.redeemProduct(enrollmentData.id, selectedProduct.id, channelId);
-      setRedeemResult({ ...result, redemptionType: channelId });
+      setRedeemResult(result);
       setDialogStep('success');
-      await loadData();
-      onPointsChange?.();
+      //await loadData();
+      // onPointsChange?.();
     } catch (err) {
       setError(err.message);
       closeDialog();
@@ -521,17 +521,14 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         canAfford ? 'bg-white' : 'bg-gray-50 opacity-70'
                       }`}
                     >
-                      {/* Product image */}
-                      {product.image_url && (
-                        <div className="h-40 bg-gray-100 overflow-hidden">
-                          <img
-                            src={product.image_url}
-                            alt={product.name}
-                            className="w-full h-full object-cover"
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                          />
-                        </div>
-                      )}
+                      <div className="h-40 bg-gray-100 overflow-hidden">
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="w-full h-full object-cover"
+                          onError={(e) => { e.target.style.display = 'none'; }}
+                        />
+                      </div>
                       <div className="p-4 space-y-2">
                         <div className="flex items-start justify-between">
                           <h3 className="font-semibold text-gray-900 text-sm">{product.name}</h3>
@@ -541,13 +538,11 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                             </span>
                           )}
                         </div>
-                        {product.description && (
-                          <p className="text-xs text-gray-500 line-clamp-2">
-                            {product.description}
-                          </p>
-                        )}
+                        <p className="text-xs text-gray-500 line-clamp-2">
+                          {product.description}
+                        </p>
                         {/* Shopify badge */}
-                        {product.shopifyProductUrl && (
+                        {product.url && (
                           <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                             <ExternalLink className="w-3 h-3" /> Shopify
                           </span>
@@ -719,11 +714,11 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                   <div className="flex items-center gap-2 p-3 bg-green-50 text-green-800 rounded-lg">
                     <Check className="w-5 h-5" />
                     <p className="text-sm font-medium">
-                      {redeemResult.points_spent?.toLocaleString('nl-NL')} {t('loyalty.store.pointsReserved', 'punten gereserveerd')}
+                      {(redeemResult.points_spent+redeemResult.bonus_points_spent)?.toLocaleString('nl-NL')} {t('loyalty.store.pointsReserved', 'punten gereserveerd')}
                     </p>
                   </div>
 
-                  {redeemResult.redemptionType === 'online' ? (
+                  {redeemResult.external_connection_type === 'SHOPIFY' ? (
                     <>
                       <div>
                         <Label className="text-sm font-medium text-gray-600 mb-1 block">
@@ -741,9 +736,9 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                           </button>
                         </div>
                       </div>
-                      {redeemResult.shopifyProductUrl && (
+                      {redeemResult.product_url && (
                         <a
-                          href={redeemResult.shopifyProductUrl}
+                          href={redeemResult.product_url}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[oklch(0.35_0.12_15)] text-white rounded-lg hover:opacity-90 transition-opacity"
@@ -759,8 +754,8 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                         {t('loyalty.store.showBarcode', 'Toon deze barcode aan de kassa')}
                       </Label>
                       <BarcodeDisplay
-                        value={redeemResult.ean13Barcode || redeemResult.code}
-                        format={redeemResult.ean13Barcode ? 'EAN13' : 'CODE128'}
+                        value={redeemResult.code}
+                        format={redeemResult.code ? 'EAN13' : 'CODE128'}
                       />
                     </div>
                   )}
