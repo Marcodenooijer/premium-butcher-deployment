@@ -318,13 +318,13 @@ const OrdersSection = ({ orders }) => {
               >
                 Close
               </button>
-              <button
-                onClick={() => handleReorder(selectedOrder)}
-                className="flex-1 px-4 py-3 bg-amber-700 text-white font-medium rounded-lg hover:bg-amber-800 transition-colors flex items-center justify-center gap-2"
-              >
-                <ShoppingCart className="w-5 h-5" />
-                Reorder
-              </button>
+              {/*<button*/}
+              {/*  onClick={() => handleReorder(selectedOrder)}*/}
+              {/*  className="flex-1 px-4 py-3 bg-amber-700 text-white font-medium rounded-lg hover:bg-amber-800 transition-colors flex items-center justify-center gap-2"*/}
+              {/*>*/}
+              {/*  <ShoppingCart className="w-5 h-5" />*/}
+              {/*  Reorder*/}
+              {/*</button>*/}
             </div>
           </div>
         </div>

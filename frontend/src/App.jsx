@@ -154,6 +154,9 @@ function App() {
   const [showBarcode, setShowBarcode] = useState(false);
 
 
+  const preferences = customerData?.preferences?.['retail'];
+
+
   // Load data from API on component mount
   useEffect(() => {
     loadAllData();
@@ -234,7 +237,7 @@ function App() {
       // Merge updates with existing customer data
       const updatedData = {
         ...customerData,
-        preferences: {retail: {...customerData.preferences['retail'], ...updates}}
+        preferences: {retail: {...preferences, ...updates}}
       };
 
       // Update local state immediately for UI responsiveness
@@ -1116,7 +1119,7 @@ function App() {
             </TabsContent>
             <TabsContent value="preferences" className="space-y-6">
               <MeatPreferences
-                  profile={customerData.preferences}
+                  profile={preferences}
                   onChange={setCustomerData}
                   isEditing={isEditingPreferences}
                   onEditToggle={() => setIsEditingPreferences(!isEditingPreferences)}
@@ -1125,7 +1128,7 @@ function App() {
                   saving={saving}
               />
               <CulinaryProfile
-                  profile={customerData.preferences}
+                  profile={preferences}
                   onChange={setCustomerData}
                   onUpdate={handleProfileUpdate}
                   isEditing={isEditingPreferences}
