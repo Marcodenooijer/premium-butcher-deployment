@@ -525,7 +525,7 @@ const LoyaltyRedemption = ({ customerData }) => {
                     >
                       <div className="h-40 bg-gray-100 overflow-hidden">
                         <img
-                          src={product.image_url}
+                          src={product.image_url ?? '/no-photo.png'}
                           alt={product.name}
                           className="w-full h-full object-cover"
                           onError={(e) => { e.target.style.display = 'none'; }}
