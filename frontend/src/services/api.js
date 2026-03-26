@@ -187,6 +187,16 @@ export const api = {
   getEthnicities: async () => {
     return apiCall('/localization/countries');
   },
+
+  createCart: async (externalConnectionId, data) => {
+    const params = new URLSearchParams();
+    params.set('external_connection_id', externalConnectionId);
+
+    return apiCall(`/carts?${params}`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  }
 };
 
 export default api;

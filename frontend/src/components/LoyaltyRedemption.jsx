@@ -7,10 +7,11 @@ import {
   Gift, Search, ShoppingBag, Tag, Clock, Copy, Check, X,
   Monitor, Store, ArrowLeft, ExternalLink, Loader2, AlertCircle,
   Coins, History, ChevronDown, ChevronUp, Barcode, Sparkles,
-  Award, Undo2, CheckCircle2, XCircle, Timer, Package
+  Award, Undo2, CheckCircle2, XCircle, Timer, Package, LucideShoppingCart
 } from 'lucide-react';
 import loyaltyApi from '../services/loyaltyApi';
 import {Button} from "@/components/ui/button.jsx";
+import api from "@/services/api.js";
 
 // ─── Barcode component (uses JsBarcode — install: npm install jsbarcode) ──
 const BarcodeDisplay = ({ value, format = 'CODE128' }) => {
@@ -215,10 +216,9 @@ const RedemptionCard = ({ redemption, onCancel, cancelling }) => {
  *
  *   <LoyaltyRedemption
  *     customerData={customerData}
- *     onPointsChange={() => loadAllData()}
  *   />
  */
-const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
+const LoyaltyRedemption = ({ customerData }) => {
   const { t } = useTranslation();
 
   // State
@@ -241,9 +241,6 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemResult, setRedeemResult] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
-  const [copied, setCopied] = useState(false);
-
-  const [redemptionChannels, setRedemptionChannels] = useState([]);
 
   // ─── Data loading ─────────────────────────────────────────────
   const loadData = useCallback(async () => {
@@ -298,20 +295,15 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
 
   // ─── Redeem flow ──────────────────────────────────────────────
   const openRedeemDialog = async (product) => {
-    const redemptionChannelsData = await loyaltyApi.getRedemptionChannels(enrollmentData.id)
-    setRedemptionChannels(redemptionChannelsData);
-
     setSelectedProduct(product);
     setDialogStep('choice');
     setRedeemResult(null);
-    setCopied(false);
   };
 
   const closeDialog = () => {
     setSelectedProduct(null);
     setDialogStep('choice');
     setRedeemResult(null);
-    setCopied(false);
   };
 
   const handleRedeem = async (channelId) => {
@@ -323,8 +315,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
       const result = await loyaltyApi.redeemProduct(enrollmentData.id, selectedProduct.id, channelId);
       setRedeemResult(result);
       setDialogStep('success');
-      //await loadData();
-      // onPointsChange?.();
+      await loadData();
     } catch (err) {
       setError(err.message);
       closeDialog();
@@ -346,12 +337,6 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
     }
   };
 
-  const copyCode = async (code) => {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   // ─── Loading state ────────────────────────────────────────────
   if (loading) {
     return (
@@ -360,6 +345,14 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
           <Loader2 className="w-6 h-6 animate-spin text-[oklch(0.35_0.12_15)]" />
           <span className="ml-2 text-gray-600">{t('loyalty.store.loading', 'Bezig met laden...')}</span>
         </CardContent>
+        <RedeemDialog
+          selectedProduct={selectedProduct}
+          redeemResult={redeemResult}
+          handleRedeem={handleRedeem}
+          dialogStep={dialogStep}
+          t={t}
+          closeDialog={closeDialog}
+        />
       </Card>
     );
   }
@@ -378,6 +371,14 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
             {t('loyalty.store.retry', 'Opnieuw proberen')}
           </button>
         </CardContent>
+          <RedeemDialog
+              selectedProduct={selectedProduct}
+              redeemResult={redeemResult}
+              handleRedeem={handleRedeem}
+              dialogStep={dialogStep}
+              t={t}
+              closeDialog={closeDialog}
+          />
       </Card>
     );
   }
@@ -540,7 +541,7 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                           )}
                         </div>
                         <p className="text-xs text-gray-500 line-clamp-2">
-                          {product.description}
+                          <div dangerouslySetInnerHTML={{ __html: product.description }} />
                         </p>
                         {/* Shopify badge */}
                         {product.channel_links && (
@@ -656,73 +657,126 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
       )}
 
       {/* ─── Redemption Dialog (Modal Overlay) ─────────────────── */}
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={dialogStep !== 'success' ? closeDialog : undefined}>
-          <div
+        <RedeemDialog
+            selectedProduct={selectedProduct}
+            redeemResult={redeemResult}
+            handleRedeem={handleRedeem}
+            dialogStep={dialogStep}
+            t={t}
+            closeDialog={closeDialog}
+        />
+    </div>
+  );
+};
+
+
+function RedeemDialog({selectedProduct, handleRedeem, dialogStep, closeDialog, redeemResult, t}) {
+    const [copied, setCopied] = useState(false);
+    const [isAddingToCart, setIsAddingToCart] = useState(false);
+
+    const copyCode = async (code) => {
+        await navigator.clipboard.writeText(code);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    function onCloseDialog() {
+        setCopied(false);
+        closeDialog();
+    }
+
+    async function onAddToCart() {
+      setIsAddingToCart(true);
+      try {
+        const cart = await api.createCart(redeemResult.external_connection_id, {
+          items: [
+            {
+              product_variant_id: selectedProduct.product_variant_id,
+              quantity: 1
+            }
+          ],
+          discount_codes: [redeemResult.code]
+        });
+        window.open(cart.checkout_url, '_blank');
+      } catch (error) {
+        console.error("Failed to add to cart", error);
+      } finally {
+        setIsAddingToCart(false);
+      }
+    }
+
+    if (!selectedProduct) {
+        return undefined;
+    }
+
+    const showAddToCartButton = redeemResult?.external_connection_type === 'SHOPIFY'
+
+    return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={dialogStep !== 'success' ? onCloseDialog : undefined}>
+        <div
             className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
-          >
-            {/* Dialog Header */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold text-lg text-gray-900">
-                {dialogStep === 'choice' && t('loyalty.store.howToRedeem', 'Hoe wil je inwisselen?')}
-                {dialogStep === 'processing' && t('loyalty.store.processing', 'Bezig met verwerken...')}
-                {dialogStep === 'success' && t('loyalty.store.redeemSuccess', 'Inwisseling gelukt!')}
-              </h3>
-              <button onClick={closeDialog} className="p-1 rounded-lg hover:bg-gray-100">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
+        >
+          {/* Dialog Header */}
+          <div className="flex items-center justify-between p-4 border-b">
+            <h3 className="font-semibold text-lg text-gray-900">
+              {dialogStep === 'choice' && t('loyalty.store.howToRedeem', 'Hoe wil je inwisselen?')}
+              {dialogStep === 'processing' && t('loyalty.store.processing', 'Bezig met verwerken...')}
+              {dialogStep === 'success' && t('loyalty.store.redeemSuccess', 'Inwisseling gelukt!')}
+            </h3>
+            <button onClick={closeDialog} className="p-1 rounded-lg hover:bg-gray-100">
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="p-4 space-y-4">
+            {/* Product info */}
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+              {selectedProduct.image_url && (
+                  <img src={selectedProduct.image_url} alt="" className="w-12 h-12 rounded-lg object-cover" />
+              )}
+              <div className="flex-1">
+                <p className="font-semibold text-sm">{selectedProduct.name}</p>
+                <p className="text-sm text-[oklch(0.35_0.12_15)] font-bold">
+                  {selectedProduct.points?.toLocaleString('nl-NL')} {t('loyalty.store.points', 'punten')}
+                </p>
+              </div>
             </div>
 
-            <div className="p-4 space-y-4">
-              {/* Product info */}
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                {selectedProduct.image_url && (
-                  <img src={selectedProduct.image_url} alt="" className="w-12 h-12 rounded-lg object-cover" />
-                )}
-                <div className="flex-1">
-                  <p className="font-semibold text-sm">{selectedProduct.name}</p>
-                  <p className="text-sm text-[oklch(0.35_0.12_15)] font-bold">
-                    {selectedProduct.points?.toLocaleString('nl-NL')} {t('loyalty.store.points', 'punten')}
-                  </p>
-                </div>
-              </div>
-
-              {/* Step: Choice — Online or In-Store */}
-              {dialogStep === 'choice' && (
-                  <div className="grid grid-cols-2 gap-3">
-                      {redemptionChannels.map((channel, i) => (
-                        <button
-                          onClick={() => handleRedeem(channel.id)}
+            {/* Step: Choice — Online or In-Store */}
+            {dialogStep === 'choice' && (
+                <div className={selectedProduct.channel_links.length < 2 ? 'flex flex-wrap justify-center gap-3' : "grid grid-cols-2 gap-3"}>
+                  {selectedProduct.channel_links.map((channel, i) => (
+                      <button
+                          onClick={() => handleRedeem(channel.channel_id)}
                           className="flex flex-col items-center gap-3 p-6 border-2 rounded-xl hover:border-[oklch(0.35_0.12_15)] hover:bg-gray-50 transition-all group"
                       >
-                            {channel.external_connection_type === 'SHOPIFY' && <Monitor
-                              className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors"/>
-                            }
-                            {channel.external_connection_type === 'DIGI' && <Store className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors" />
-                            }
+                        {channel.external_connection_type === 'SHOPIFY' && <Monitor
+                            className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors"/>
+                        }
+                        {channel.external_connection_type === 'DIGI' && <Store className="w-10 h-10 text-gray-400 group-hover:text-[oklch(0.35_0.12_15)] transition-colors" />
+                        }
 
-                          <div className="text-center">
-                              <p className="font-semibold text-gray-900">{channel.title}</p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                  {channel.description}
-                              </p>
-                          </div>
-                        </button>
-                      ))}
+                        <div className="text-center">
+                          <p className="font-semibold text-gray-900">{channel.channel_name}</p>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {channel.channel_description}
+                          </p>
+                        </div>
+                      </button>
+                  ))}
                 </div>
-              )}
+            )}
 
-              {/* Step: Processing */}
-              {dialogStep === 'processing' && (
+            {/* Step: Processing */}
+            {dialogStep === 'processing' && (
                 <div className="flex flex-col items-center py-8 space-y-3">
                   <Loader2 className="w-10 h-10 animate-spin text-[oklch(0.35_0.12_15)]" />
                   <p className="text-gray-600">{t('loyalty.store.generatingCode', 'Code wordt aangemaakt...')}</p>
                 </div>
-              )}
+            )}
 
-              {/* Step: Success */}
-              {dialogStep === 'success' && redeemResult && (
+            {/* Step: Success */}
+            {dialogStep === 'success' && redeemResult && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 p-3 bg-green-50 text-green-800 rounded-lg">
                     <Check className="w-5 h-5" />
@@ -732,45 +786,45 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                   </div>
 
                   {redeemResult.external_connection_type === 'SHOPIFY' ? (
-                    <>
-                      <div>
-                        <Label className="text-sm font-medium text-gray-600 mb-1 block">
-                          {t('loyalty.store.discountCode', 'Kortingscode')}
-                        </Label>
-                        <div className="flex items-center gap-2">
-                          <code className="flex-1 px-4 py-3 bg-gray-50 border rounded-lg font-mono text-lg tracking-widest text-center font-bold">
-                            {redeemResult.code}
-                          </code>
-                          <button
-                            onClick={() => copyCode(redeemResult.code)}
-                            className="p-3 rounded-lg border hover:bg-gray-50 transition-colors"
-                          >
-                            {copied ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5 text-gray-500" />}
-                          </button>
+                      <>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-600 mb-1 block">
+                            {t('loyalty.store.discountCode', 'Kortingscode')}
+                          </Label>
+                          <div className="flex items-center gap-2">
+                            <code className="flex-1 px-4 py-3 bg-gray-50 border rounded-lg font-mono text-lg tracking-widest text-center font-bold">
+                              {redeemResult.code}
+                            </code>
+                            <button
+                                onClick={() => copyCode(redeemResult.code)}
+                                className="p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                            >
+                              {copied ? <Check className="w-5 h-5 text-green-600" /> : <Copy className="w-5 h-5 text-gray-500" />}
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      {redeemResult.product_url && (
-                        <a
-                          href={redeemResult.product_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[oklch(0.35_0.12_15)] text-white rounded-lg hover:opacity-90 transition-opacity"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          {t('loyalty.store.shopNow', 'Nu bestellen op Shopify')}
-                        </a>
-                      )}
-                    </>
+                        {redeemResult.product_url && (
+                            <a
+                                href={redeemResult.product_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 bg-[oklch(0.35_0.12_15)] text-white rounded-lg hover:opacity-90 transition-opacity"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              {t('loyalty.store.shopNow', 'Nu bestellen op Shopify')}
+                            </a>
+                        )}
+                      </>
                   ) : (
-                    <div className="space-y-2">
-                      <Label className="text-sm font-medium text-gray-600 mb-1 block">
-                        {t('loyalty.store.showBarcode', 'Toon deze barcode aan de kassa')}
-                      </Label>
-                      <BarcodeDisplay
-                        value={redeemResult.code}
-                        format={redeemResult.code ? 'EAN13' : 'CODE128'}
-                      />
-                    </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-medium text-gray-600 mb-1 block">
+                          {t('loyalty.store.showBarcode', 'Toon deze barcode aan de kassa')}
+                        </Label>
+                        <BarcodeDisplay
+                            value={redeemResult.code}
+                            format={redeemResult.code ? 'EAN13' : 'CODE128'}
+                        />
+                      </div>
                   )}
 
                   <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg">
@@ -778,20 +832,44 @@ const LoyaltyRedemption = ({ customerData, onPointsChange }) => {
                     {t('loyalty.store.expiryNotice', 'Deze code verloopt over 48 uur. Punten worden pas definitief afgeschreven na voltooiing van de bestelling.')}
                   </div>
 
-                  <button
-                    onClick={closeDialog}
-                    className="w-full px-4 py-3 bg-[oklch(0.35_0.12_15)] text-white rounded-xl font-semibold hover:opacity-90 transition-opacity"
-                  >
-                    {t('loyalty.store.close', 'Sluiten')}
-                  </button>
+                    <div className="flex flex-col gap-2">
+                        {/* Only show Add to Cart if the selected channel is SHOPIFY */}
+                      {showAddToCartButton && (
+                          <button
+                              onClick={onAddToCart}
+                              disabled={isAddingToCart}
+                              className="w-full px-4 py-3 bg-[oklch(0.35_0.12_15)] text-white rounded-xl font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+                          >
+                            {isAddingToCart ? (
+                                <>
+                                  <Loader2 className="w-5 h-5 animate-spin" />
+                                  {t('loyalty.store.adding', 'Toevoegen...')}
+                                </>
+                            ) : (
+                                <>
+                                  <LucideShoppingCart className="w-5 h-5" />
+                                  {t('loyalty.store.addToCart', 'In winkelwagen')}
+                                </>
+                            )}
+                          </button>
+                      )}
+
+                        <button
+                            onClick={onCloseDialog}
+                            className={`w-full px-4 py-3 rounded-xl font-semibold transition-all ${
+                                showAddToCartButton
+                                    ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                    : 'bg-[oklch(0.35_0.12_15)] text-white hover:opacity-90'
+                            }`}
+                        >
+                            {t('loyalty.store.close', 'Sluiten')}
+                        </button>
+                    </div>
                 </div>
-              )}
-            </div>
+            )}
           </div>
         </div>
-      )}
-    </div>
-  );
-};
+      </div>
+}
 
 export default LoyaltyRedemption;

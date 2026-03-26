@@ -49,7 +49,11 @@ export async function getEnrollments() {
 // ─── Products ───────────────────────────────────────────────────
 
 export async function getProducts(loyaltyProgramId) {
-  const data = await loyaltyFetch(`/${loyaltyProgramId}/product-variants`);
+  const params = new URLSearchParams()
+  params.set('match_configured_channels', 'true')
+  params.set('include_redemption_channels', 'true')
+
+  const data = await loyaltyFetch(`/${loyaltyProgramId}/product-variants?${params}`);
   return data.results;
 }
 
@@ -88,7 +92,8 @@ export async function getRedemptions(enrollmentId) {
 // ─── Transactions ───────────────────────────────────────────────
 
 export async function getTransactions(enrollmentId) {
-  return await loyaltyFetch(`/enrollments/${enrollmentId}/transactions`)
+  const data = await loyaltyFetch(`/enrollments/${enrollmentId}/transactions`)
+  return data.results
 }
 
 // ─── Health Check ───────────────────────────────────────────────
