@@ -9,9 +9,9 @@
  */
 
 import {getUserTokenNew as getUserToken} from '../firebase';
+import {API_BASE_URL} from "@/services/api.js";
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const LOYALTY_BASE = `${API_BASE}/loyalty-programs`;
+const LOYALTY_BASE = `${API_BASE_URL}/loyalty-programs`;
 
 async function loyaltyFetch(endpoint, options = {}) {
   const { method = 'GET', body } = options;

@@ -288,7 +288,7 @@ function App() {
         ...newMember,
         relationship: newMember.relationship.toUpperCase(),
         date_of_birth: newMember.date_of_birth,
-        requirements: newMember.requirements ? {dietary_requirements: newMember.requirements.split(",").map(r => r.trim())} : {}
+        requirements: newMember.requirements ? {retail: {dietary_requirements: newMember.requirements.split(",").map(r => r.trim())}} : {}
       };
 
       await api.addFamilyMember(memberData);
@@ -1020,12 +1020,12 @@ function App() {
                                   <Trash2 className="w-4 h-4"/>
                                 </Button>
                               </div>
-                              {member.requirements?.dietary_requirements && member.requirements.dietary_requirements.length > 0 && (
+                              {member.requirements?.retail.dietary_requirements && member.requirements.retail.dietary_requirements.length > 0 && (
                                   <div className="mt-2">
                                     <p className="text-xs text-gray-500 mb-1">Dietary
                                       Requirements:</p>
                                     <div className="flex flex-wrap gap-1">
-                                      {member.requirements.dietary_requirements.map((req, idx) => (
+                                      {member.requirements.retail.dietary_requirements.map((req, idx) => (
                                           <Badge key={idx} variant="secondary"
                                                  className="text-xs">{req}</Badge>
                                       ))}

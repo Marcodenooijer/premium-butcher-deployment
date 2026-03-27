@@ -44,6 +44,7 @@ export const signInWithGoogle = async () => {
 export const signInWithEmail = async (email, password) => {
   try {
     const result = await signInWithEmailAndPassword(auth, email, password);
+    await signInFirebaseCustomer(result)
     return result.user;
   } catch (error) {
     console.error('Error signing in with email:', error);
@@ -55,6 +56,7 @@ export const signInWithEmail = async (email, password) => {
 export const signUpWithEmail = async (email, password) => {
   try {
     const result = await createUserWithEmailAndPassword(auth, email, password);
+    await signInFirebaseCustomer(result)
     return result.user;
   } catch (error) {
     console.error('Error signing up with email:', error);
@@ -84,12 +86,15 @@ export const signInWithFacebook = async () => {
 
 export async function signInWithProvider(provider) {
   const result = await signInWithPopup(auth, provider);
-  await api.signInWithProvider('firebase', {
-    realm: 'CUSTOMERS',
-    token: result.user.accessToken
-  })
+  await signInFirebaseCustomer(result)
 }
 
+async function signInFirebaseCustomer(firebaseResult) {
+  await api.signInWithProvider('firebase', {
+    realm: 'CUSTOMERS',
+    token: firebaseResult.user.accessToken
+  })
+}
 
 // Logout
 export const logout = async () => {
