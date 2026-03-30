@@ -16,6 +16,14 @@ const getAuthHeaders = async () => {
   };
 };
 
+export class ApiError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.message = message;
+    this.status = status;
+  }
+}
+
 const apiCall = async (endpoint, options = {}) => {
   const headers = await getAuthHeaders();
   
@@ -35,10 +43,10 @@ const apiCall = async (endpoint, options = {}) => {
 
   if (!response.ok) {
     if (response.status === 401) {
-      throw new Error('Session expired. Please sign in again.');
+      throw new ApiError('Session expired. Please sign in again.', response.status);
     }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || `HTTP error! status: ${response.status}`);
+    throw new ApiError(error.error || `HTTP error! status: ${response.status}`, response.status);
   }
 
   if (response.status === 204) {
@@ -147,9 +155,9 @@ export const api = {
 
     if (!response.ok) {
       if (response.status === 401) {
-        throw new Error('Session expired. Please sign in again.');
+        throw new ApiError('Session expired. Please sign in again.', response.status);
       }
-      throw new Error('Failed to fetch barcode');
+      throw new ApiError('Failed to fetch barcode', response.status);
     }
 
     // Return the blob as a URL
@@ -207,7 +215,7 @@ export const getRecommendedOrder = async () => {
     headers: await getAuthHeaders(),
     cache: 'no-store',
   });
-  if (!response.ok) throw new Error('Failed to fetch recommended order');
+  if (!response.ok) throw new ApiError('Failed to fetch recommended order', response.status);
   const data = await response.json();
   return data.items || [];  // Return just the items array
 };

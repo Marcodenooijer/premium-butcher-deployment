@@ -9,7 +9,7 @@
  */
 
 import {getUserTokenNew as getUserToken} from '../firebase';
-import {API_BASE_URL} from "@/services/api.js";
+import {API_BASE_URL, ApiError} from "@/services/api.js";
 
 const LOYALTY_BASE = `${API_BASE_URL}/loyalty-programs`;
 
@@ -34,7 +34,7 @@ async function loyaltyFetch(endpoint, options = {}) {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || error.detail || `API error: ${response.status}`);
+    throw new ApiError(error.error || error.detail || `API error: ${response.status}`, response.status);
   }
 
   return response.json();

@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import api from './services/api';
+import api, {ApiError} from './services/api';
 import {useAuth} from './contexts/AuthContext';
 import PWAInstallPrompt from './components/PWAInstallPrompt'; // Add this import
 import LoyaltyRedemption from './components/LoyaltyRedemption';
@@ -205,6 +205,12 @@ function App() {
     } catch (err) {
       console.error('Error loading data:', err);
       setError(err.message);
+
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          await logout();
+        }
+      }
     } finally {
       setLoading(false);
     }

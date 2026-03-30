@@ -534,10 +534,10 @@ const LoyaltyRedemption = ({ customerData }) => {
                       <div className="p-4 space-y-2">
                         <div className="flex items-start justify-between">
                           <h3 className="font-semibold text-gray-900 text-sm">{product.name}</h3>
-                          {product.category && (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
-                              {product.category}
-                            </span>
+                          {product?.categories.slice(0, 2).map(category =>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                {category}
+                              </span>
                           )}
                         </div>
                         <p className="text-xs text-gray-500 line-clamp-2">
