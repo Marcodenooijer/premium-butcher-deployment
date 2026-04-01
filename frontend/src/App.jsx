@@ -568,7 +568,7 @@ function App() {
                                 value={customerData.secondary_email || ''}
                                 onChange={(e) => setCustomerData({
                                   ...customerData,
-                                  secondary_email: e.target.value
+                                  secondary_email: e.target.value || null
                                 })}
                                 className="mt-1"
                                 placeholder="Optional secondary email"
