@@ -625,7 +625,7 @@ const LoyaltyRedemption = ({ customerData }) => {
             ) : (
               <div className="space-y-2">
                 {transactions.map((tx, i) => {
-                  const isPositive = tx.type === 'EARN' || tx.type === 'REFUND' || tx.type === 'CREDIT';
+                  const isPositive = tx.type === 'EARN' || tx.type === 'REFUND' || tx.type === 'CREDIT' || tx.type === 'EXPIRED';
                   return (
                     <div key={tx.id || i} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                       <div className="flex items-center gap-3">
