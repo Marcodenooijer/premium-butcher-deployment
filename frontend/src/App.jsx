@@ -802,7 +802,7 @@ function App() {
                             </div>
                         )}
                       </div>
-                      <div>
+                      <div hidden>
                         <Label htmlFor="ethnicity">Ethnicity</Label>
                         {isEditingPersonal ? (
                             <div className="space-y-3 mt-1">
