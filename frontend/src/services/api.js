@@ -2,7 +2,7 @@
 // Updated with NO CACHING - all requests are fresh from server
 import { getUserTokenNew as getUserToken } from '../firebase';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+export const API_BASE_URL = 'https://api.romano.app.elysia.marketing' || import.meta.env.VITE_API_BASE_URL;
 
 const getAuthHeaders = async () => {
   const token = await getUserToken();
