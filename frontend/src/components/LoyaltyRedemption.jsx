@@ -277,7 +277,7 @@ const LoyaltyRedemption = ({ customerData }) => {
   }, [loadData]);
 
   // ─── Filtering ────────────────────────────────────────────────
-  const categories = Array.from(new Set(products.map(p => p.category).filter(Boolean)));
+  const categories = Array.from(new Set(products.flatMap(p => p.categories).filter(Boolean)));
 
   const availablePoints = (enrollmentData?.points + enrollmentData?.bonus_points) ?? 0
   const reservedPoints = enrollmentData?.reserved_points ?? 0;
@@ -286,7 +286,7 @@ const LoyaltyRedemption = ({ customerData }) => {
   const filteredProducts = products.filter(p => {
     if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
         !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (selectedCategory !== 'all' && p.category !== selectedCategory) return false;
+    if (selectedCategory !== 'all' && !p.categories.includes(selectedCategory)) return false;
     if (showAffordableOnly && p.points > availablePoints) return false;
     return true;
   });
