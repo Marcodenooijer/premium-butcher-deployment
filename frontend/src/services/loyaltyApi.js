@@ -52,6 +52,7 @@ export async function getProducts(loyaltyProgramId) {
   const params = new URLSearchParams()
   params.set('match_configured_channels', 'true')
   params.set('include_redemption_channels', 'true')
+  params.set('size', Number.MAX_SAFE_INTEGER.toString())
 
   const data = await loyaltyFetch(`/${loyaltyProgramId}/product-variants?${params}`);
   return data.results;
