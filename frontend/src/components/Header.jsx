@@ -51,7 +51,7 @@ export default function Header({ customerData, enrollment, onLogout }) {
   };
 
   // Extract first name from full name
-  const firstName = customerData?.name?.split(' ')[0] || 'Guest';
+  const firstName = customerData?.first_name?.split(' ')[0] || 'Guest';
 
   return (
     <div className="header-wrapper">
