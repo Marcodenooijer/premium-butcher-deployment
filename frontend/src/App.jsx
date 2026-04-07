@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import api, {ApiError} from './services/api';
+import api, {ApiError, getRecommendedOrder, SHOPIFY_EXTERNAL_CONNECTION_ID} from './services/api';
 import {useAuth} from './contexts/AuthContext';
 import PWAInstallPrompt from './components/PWAInstallPrompt'; // Add this import
 import LoyaltyRedemption from './components/LoyaltyRedemption';
@@ -157,6 +157,20 @@ function App() {
   const preferences = customerData?.preferences?.['retail'];
 
 
+  async function addRecommendedItemsToCart() {
+    const cart = await api.createCart(SHOPIFY_EXTERNAL_CONNECTION_ID, {
+      items: recommendedOrder.map(item => (
+          {
+            product_variant_id: item.product_variant_id,
+            quantity: item.quantity,
+          }
+      )),
+      discount_codes: []
+    });
+    window.open(cart.checkout_url, '_blank');
+  }
+
+
   // Load data from API on component mount
   useEffect(() => {
     loadAllData();
@@ -189,6 +203,8 @@ function App() {
         // api.getSustainability(),
         // getRecommendedOrder(),
       ]);
+
+      setRecommendedOrder(await getRecommendedOrder(customer.id));
 
       setCustomerData(customer);
       setEnrollmentData(enrollments[0]);
@@ -1173,7 +1189,7 @@ function App() {
                               {/* Product Image - Fixed aspect ratio */}
                               <div className="flex-shrink-0 w-full md:w-auto">
                                 <img
-                                    src={item.image_url}
+                                    src={item.product_image_url ?? '/no-photo.png'}
                                     alt={item.product_name}
                                     className="w-full md:w-24 h-48 md:h-24 object-cover rounded-lg"
                                 />
@@ -1219,7 +1235,7 @@ function App() {
                                       className="px-3 py-2 hover:bg-gray-100 transition-colors"
                                       onClick={() => {
                                         const newOrder = recommendedOrder.map(i =>
-                                            i.id === item.id
+                                            i.product_variant_id === item.product_variant_id
                                                 ? {...i, quantity: i.quantity + 1}
                                                 : i
                                         );
@@ -1238,7 +1254,7 @@ function App() {
                                   <button
                                       className="p-2 hover:bg-red-100 rounded-lg transition-colors text-red-600"
                                       onClick={() => {
-                                        const newOrder = recommendedOrder.filter(i => i.id !== item.id);
+                                        const newOrder = recommendedOrder.filter(i => i.product_variant_id !== item.product_variant_id);
                                         setRecommendedOrder(newOrder);
                                       }}
                                       title="Remove item"
@@ -1262,13 +1278,7 @@ function App() {
 
                         <Button
                             className="w-full bg-gradient-to-r from-[oklch(0.35_0.12_15)] to-amber-700 hover:from-[oklch(0.30_0.12_15)] hover:to-amber-800 text-white text-lg py-6 shadow-lg hover:shadow-xl transition-all"
-                            onClick={() => {
-                              const cartParams = recommendedOrder.map((item, index) =>
-                                  `items[${index}][id]=${item.product_sku}&items[${index}][quantity]=${item.quantity}`
-                              ).join('&');
-                              const shopifyUrl = `https://www.biologischvleeschatelier.nl/cart/add?${cartParams}`;
-                              window.open(shopifyUrl, '_blank');
-                            }}
+                            onClick={addRecommendedItemsToCart}
                         >
                           <ShoppingCart className="w-6 h-6 mr-2"/>
                           Order in Romano webshop

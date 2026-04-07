@@ -2,6 +2,8 @@
 // Updated with NO CACHING - all requests are fresh from server
 import { getUserTokenNew as getUserToken } from '../firebase';
 
+export const SHOPIFY_EXTERNAL_CONNECTION_ID = '0199eda1-0229-7233-a697-00e43e0bff75'
+
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const getAuthHeaders = async () => {
@@ -213,12 +215,12 @@ export const api = {
 export default api;
 
 // Get recommended order - ALWAYS FRESH
-export const getRecommendedOrder = async () => {
-  const response = await fetch(`${API_BASE_URL}/api/profile/recommended-order?_t=${Date.now()}`, {
+export const getRecommendedOrder = async (customerId) => {
+  const response = await fetch(`${API_BASE_URL}/customer/recommendation/${customerId}?_t=${Date.now()}`, {
     headers: await getAuthHeaders(),
     cache: 'no-store',
   });
   if (!response.ok) throw new ApiError('Failed to fetch recommended order', response.status);
   const data = await response.json();
-  return data.items || [];  // Return just the items array
+  return data || [];  // Return just the items array
 };

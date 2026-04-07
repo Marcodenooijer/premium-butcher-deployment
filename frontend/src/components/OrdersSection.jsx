@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { ShoppingCart, ChevronRight, X } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import api from "@/services/api.js";
+import api, {SHOPIFY_EXTERNAL_CONNECTION_ID} from "@/services/api.js";
 
 const OrdersSection = ({ orders }) => {
   const [selectedOrder, setSelectedOrder] = useState(null);
@@ -85,15 +85,18 @@ const OrdersSection = ({ orders }) => {
     setIsModalOpen(true);
   };
 
-  const handleReorder = (order) => {
-    // Add items back to cart
-    const itemsToAdd = order.items || [];
-    console.log('Reordering items:', itemsToAdd);
-
-    // You can integrate with your cart system here
-    // Example: dispatch(addToCart(itemsToAdd));
-
-    alert(`Added ${itemsToAdd.length} items to cart`);
+  const handleReorder = async () => {
+    console.log(orderItems);
+    const cart = await api.createCart(SHOPIFY_EXTERNAL_CONNECTION_ID, {
+      items: orderItems.map(item => (
+          {
+            product_variant_id: item.product_id,
+            quantity: item.quantity,
+          }
+      )),
+      discount_codes: []
+    });
+    window.open(cart.checkout_url, '_blank');
     setIsModalOpen(false);
   };
 
@@ -138,7 +141,7 @@ const OrdersSection = ({ orders }) => {
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Status</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Delivery Date</th>
                   <th className="text-left py-3 px-4 font-semibold text-gray-700">Items</th>
-                  <th className="text-right py-3 px-4 font-semibold text-gray-700">Total</th>
+                  {/*<th className="text-right py-3 px-4 font-semibold text-gray-700">Total</th>*/}
                 </tr>
               </thead>
               <tbody>
@@ -168,9 +171,9 @@ const OrdersSection = ({ orders }) => {
                         {order.delivery_date ? formatDate(order.delivery_date) : 'N/A'}
                       </td>
                       <td className="py-4 px-4 text-sm text-gray-600">{itemCount} items</td>
-                      <td className="py-4 px-4 text-right font-semibold text-gray-900">
-                        €{(typeof orderTotal === 'string' ? parseFloat(orderTotal) : orderTotal).toFixed(2)}
-                      </td>
+                      {/*<td className="py-4 px-4 text-right font-semibold text-gray-900">*/}
+                      {/*  €{(typeof orderTotal === 'string' ? parseFloat(orderTotal) : orderTotal).toFixed(2)}*/}
+                      {/*</td>*/}
                     </tr>
                   );
                 })}
@@ -215,7 +218,7 @@ const OrdersSection = ({ orders }) => {
             {/* Modal Header */}
             <div className="sticky top-0 flex justify-between items-center p-6 border-b border-gray-200 bg-white">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Order #{selectedOrder.order_number}</h2>
+                <h2 className="text-2xl font-bold text-gray-900">Order {selectedOrder.order_number}</h2>
                 <p className="text-gray-600 text-sm mt-1">{formatDate(selectedOrder.order_date)}</p>
               </div>
               <button
@@ -250,7 +253,7 @@ const OrdersSection = ({ orders }) => {
                   <p className="text-xs text-amber-700 uppercase tracking-wide font-semibold">Order Total</p>
                   <p className="mt-2 text-2xl font-bold text-amber-900">
                     €{orderItems.reduce((sum, item) => {
-                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
+                      const price = item.total_price || (item.discounted_price) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </p>
@@ -274,9 +277,9 @@ const OrdersSection = ({ orders }) => {
                       </div>
                       <div className="text-right ml-4">
                         <p className="text-sm text-gray-600">
-                          {item.quantity} × €{(typeof item.discounted_price === 'string' ? parseFloat(item.discounted_price) : item.discounted_price).toFixed(2)}
+                          {item.quantity} × €{(item.original_price / item.quantity).toFixed(2)}
                         </p>
-                        <p className="font-semibold text-gray-900">€{(typeof (item.total_price || item.quantity * item.discounted_price) === 'string' ? parseFloat(item.total_price || item.quantity * item.discounted_price) : (item.total_price || item.quantity * item.discounted_price)).toFixed(2)}</p>
+                        <p className="font-semibold text-gray-900">€{(item.discounted_price).toFixed(2)}</p>
                       </div>
                     </div>
                   ))}
@@ -289,7 +292,7 @@ const OrdersSection = ({ orders }) => {
                   <span className="text-gray-700 font-medium">Subtotal</span>
                   <span className="text-gray-900">
                     €{orderItems.reduce((sum, item) => {
-                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
+                      const price = (item.discounted_price) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </span>
@@ -302,7 +305,7 @@ const OrdersSection = ({ orders }) => {
                   <span className="text-lg font-bold text-gray-900">Total</span>
                   <span className="text-lg font-bold text-amber-900">
                     €{orderItems.reduce((sum, item) => {
-                      const price = item.total_price || (item.discounted_price * item.quantity) || 0;
+                      const price = (item.discounted_price) || 0;
                       return sum + (typeof price === 'string' ? parseFloat(price) : price);
                     }, 0).toFixed(2)}
                   </span>
@@ -318,13 +321,13 @@ const OrdersSection = ({ orders }) => {
               >
                 Close
               </button>
-              {/*<button*/}
-              {/*  onClick={() => handleReorder(selectedOrder)}*/}
-              {/*  className="flex-1 px-4 py-3 bg-amber-700 text-white font-medium rounded-lg hover:bg-amber-800 transition-colors flex items-center justify-center gap-2"*/}
-              {/*>*/}
-              {/*  <ShoppingCart className="w-5 h-5" />*/}
-              {/*  Reorder*/}
-              {/*</button>*/}
+              <button
+                onClick={() => handleReorder(selectedOrder)}
+                className="flex-1 px-4 py-3 bg-amber-700 text-white font-medium rounded-lg hover:bg-amber-800 transition-colors flex items-center justify-center gap-2"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                Reorder
+              </button>
             </div>
           </div>
         </div>
