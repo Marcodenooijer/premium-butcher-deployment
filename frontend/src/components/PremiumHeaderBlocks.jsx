@@ -163,11 +163,11 @@ function PremiumHeaderBlocks() {
           <span className="text-white/70 text-sm uppercase tracking-wide">Next Event</span>
         </div>
         <div className="text-lg font-semibold text-white line-clamp-2">
-          {nextEvent?.title || 'No upcoming events'}
+          {nextEvent?.name || 'No upcoming events'}
         </div>
-        {nextEvent?.event_date && (
+        {nextEvent?.start_date && (
           <div className="mt-2 text-white/60 text-sm">
-            {formatDate(nextEvent.event_date)}
+            {formatDate(nextEvent.start_date)}
           </div>
         )}
       </div>

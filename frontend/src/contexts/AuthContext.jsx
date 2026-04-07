@@ -2,6 +2,7 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth } from '../firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import api from "@/services/api.js";
 
 const AuthContext = createContext({});
 
@@ -21,10 +22,15 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        setUser(firebaseUser);
         const token = await firebaseUser.getIdToken();
+        await api.signInWithProvider('firebase', {
+          realm: 'CUSTOMERS',
+          token: token
+        })
+
+        setUser(firebaseUser);
         setIdToken(token);
-        
+
         const refreshInterval = setInterval(async () => {
           try {
             const newToken = await firebaseUser.getIdToken(true);

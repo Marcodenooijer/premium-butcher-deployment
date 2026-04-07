@@ -133,7 +133,10 @@ export const api = {
   },
 
   getHeaderNextEvent: async () => {
-    return apiCall('/api/header/next-event');
+    const params = new URLSearchParams();
+    const netherlandsCountryId = '156';
+    params.set('country', netherlandsCountryId);
+    return apiCall(`/calendar/events/next?${params}`);
   },
 
   getSustainability: async () => {
