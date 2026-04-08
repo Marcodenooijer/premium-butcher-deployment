@@ -86,17 +86,15 @@ const OrdersSection = ({ orders }) => {
   };
 
   const handleReorder = async () => {
-    console.log(orderItems);
-    const cart = await api.createCart(SHOPIFY_EXTERNAL_CONNECTION_ID, {
+    const cart = await api.createSessionCartUrls(SHOPIFY_EXTERNAL_CONNECTION_ID, {
       items: orderItems.map(item => (
           {
             product_variant_id: item.product_id,
             quantity: item.quantity,
           }
-      )),
-      discount_codes: []
+      ))
     });
-    window.open(cart.checkout_url, '_blank');
+    window.open(cart.items_update_url, '_blank');
     setIsModalOpen(false);
   };
 

@@ -209,6 +209,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data)
     });
+  },
+
+  createSessionCartUrls: async (externalConnectionId, data) => {
+    const params = new URLSearchParams();
+    params.set('external_connection_id', externalConnectionId);
+
+    return apiCall(`/carts/session?${params}`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
   }
 };
 
