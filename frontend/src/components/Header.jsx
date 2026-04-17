@@ -115,7 +115,7 @@ export default function Header({ customerData, enrollment, onLogout }) {
 
           {/* Premium Header Blocks - Overlaying background */}
           <div className="header-blocks-wrapper">
-            <PremiumHeaderBlocks />
+            <PremiumHeaderBlocks loyaltyProgramEnrollment={customerData?.loyalty_program_enrollments?.[0]} />
           </div>
         </div>
       </div>

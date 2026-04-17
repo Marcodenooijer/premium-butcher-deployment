@@ -10,7 +10,6 @@ import {
   signOut,
   sendPasswordResetEmail
 } from 'firebase/auth';
-import api from "@/services/api.js";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -33,7 +32,7 @@ export const googleProvider = new GoogleAuthProvider();
 // Google Sign-In
 export const signInWithGoogle = async () => {
   try {
-    await signInWithProvider(googleProvider);
+    return await signInWithPopup(auth, googleProvider);
   } catch (error) {
     console.error('Error signing in with Google:', error);
     throw error;
@@ -44,7 +43,6 @@ export const signInWithGoogle = async () => {
 export const signInWithEmail = async (email, password) => {
   try {
     const result = await signInWithEmailAndPassword(auth, email, password);
-    await signInFirebaseCustomer(result)
     return result.user;
   } catch (error) {
     console.error('Error signing in with email:', error);
@@ -56,7 +54,6 @@ export const signInWithEmail = async (email, password) => {
 export const signUpWithEmail = async (email, password) => {
   try {
     const result = await createUserWithEmailAndPassword(auth, email, password);
-    await signInFirebaseCustomer(result)
     return result.user;
   } catch (error) {
     console.error('Error signing up with email:', error);
@@ -77,24 +74,12 @@ export const resetPassword = async (email) => {
 // Facebook Sign-In
 export const signInWithFacebook = async () => {
   try {
-    await signInWithProvider(facebookProvider);
+    return await signInWithPopup(auth, facebookProvider);
   } catch (error) {
     console.error("Error signing in with Facebook:", error);
     throw error;
   }
 };
-
-export async function signInWithProvider(provider) {
-  const result = await signInWithPopup(auth, provider);
-  await signInFirebaseCustomer(result)
-}
-
-async function signInFirebaseCustomer(firebaseResult) {
-  await api.signInWithProvider('firebase', {
-    realm: 'CUSTOMERS',
-    token: firebaseResult.user.accessToken
-  })
-}
 
 // Logout
 export const logout = async () => {
