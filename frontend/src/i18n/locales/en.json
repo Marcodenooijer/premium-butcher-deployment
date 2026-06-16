@@ -71,5 +71,12 @@
     "seasonally": "Seasonally",
     "bbqSkillLevel": "BBQ Skill Level",
     "pitmaster": "Pitmaster"
+  },
+  "loyalty": {
+    "store": {
+      "sortByPoints": "Points",
+      "sortAsc": "Points: low to high",
+      "sortDesc": "Points: high to low"
+    }
   }
 }

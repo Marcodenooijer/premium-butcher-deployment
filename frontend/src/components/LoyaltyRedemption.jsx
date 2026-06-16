@@ -1,16 +1,30 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import {useCallback, useEffect, useRef, useState} from 'react';
+import {useTranslation} from 'react-i18next';
+import {Card, CardContent, CardDescription, CardHeader, CardTitle} from '@/components/ui/card';
+import {Input} from '@/components/ui/input';
+import {Label} from '@/components/ui/label';
 import {
-  Gift, Search, ShoppingBag, Tag, Clock, Copy, Check, X,
-  Monitor, Store, ArrowLeft, ExternalLink, Loader2, AlertCircle,
-  Coins, History, ChevronDown, ChevronUp, Barcode, Sparkles,
-  Award, Undo2, CheckCircle2, XCircle, Timer, Package, LucideShoppingCart
+  AlertCircle,
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  Check,
+  Clock,
+  Coins,
+  Copy,
+  ExternalLink,
+  Gift,
+  History,
+  Loader2,
+  LucideShoppingCart,
+  Monitor,
+  Search,
+  ShoppingBag,
+  Sparkles,
+  Store,
+  Tag,
+  X
 } from 'lucide-react';
 import loyaltyApi from '../services/loyaltyApi';
-import {Button} from "@/components/ui/button.jsx";
 import api from "@/services/api.js";
 
 // ─── Barcode component (uses JsBarcode — install: npm install jsbarcode) ──
@@ -233,6 +247,7 @@ const LoyaltyRedemption = ({ customerData }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [showAffordableOnly, setShowAffordableOnly] = useState(true);
+  const [sortOrder, setSortOrder] = useState('asc'); // asc | desc — sort products by points
   const [activeView, setActiveView] = useState('products'); // products | redemptions | history
 
   // Redemption dialog state
@@ -283,13 +298,17 @@ const LoyaltyRedemption = ({ customerData }) => {
   const reservedPoints = enrollmentData?.reserved_points ?? 0;
   const totalPoints = (availablePoints + reservedPoints) ?? 0;
 
-  const filteredProducts = products.filter(p => {
-    if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-    if (selectedCategory !== 'all' && !p.categories.includes(selectedCategory)) return false;
-    if (showAffordableOnly && p.points > availablePoints) return false;
-    return true;
-  });
+  const filteredProducts = products
+    .filter(p => {
+      if (searchQuery && !p.name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+          !p.description?.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (selectedCategory !== 'all' && !p.categories.includes(selectedCategory)) return false;
+      if (showAffordableOnly && p.points > availablePoints) return false;
+      return true;
+    })
+    .sort((a, b) => sortOrder === 'asc'
+      ? (a.points ?? 0) - (b.points ?? 0)
+      : (b.points ?? 0) - (a.points ?? 0));
 
   const pendingRedemptions = redemptions.filter(r => r.status === 'PENDING');
 
@@ -475,8 +494,8 @@ const LoyaltyRedemption = ({ customerData }) => {
         <Card className="border-0 shadow-lg">
           <CardContent className="pt-6 space-y-4">
             {/* Search & Filters */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
+              <div className="relative w-full sm:w-1/2">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder={t('loyalty.store.searchProducts', 'Zoek producten...')}
@@ -488,13 +507,26 @@ const LoyaltyRedemption = ({ customerData }) => {
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
+                className="w-full sm:w-[25%] px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent"
               >
                 <option value="all">{t('loyalty.store.allCategories', 'Alle categorieën')}</option>
                 {categories.map(cat => (
                   <option key={cat} value={cat}>{cat}</option>
                 ))}
               </select>
+              <button
+                type="button"
+                onClick={() => setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                title={sortOrder === 'asc'
+                  ? t('loyalty.store.sortAsc', 'Punten: laag naar hoog')
+                  : t('loyalty.store.sortDesc', 'Punten: hoog naar laag')}
+                className="flex items-center gap-2 px-4 py-2 text-sm whitespace-nowrap border border-gray-300 rounded-lg hover:bg-gray-50 focus:ring-2 focus:ring-[oklch(0.35_0.12_15)] focus:border-transparent transition-colors"
+              >
+                {sortOrder === 'asc'
+                  ? <ArrowUpNarrowWide className="w-4 h-4 text-[oklch(0.35_0.12_15)]" />
+                  : <ArrowDownWideNarrow className="w-4 h-4 text-[oklch(0.35_0.12_15)]" />}
+                {t('loyalty.store.sortByPoints', 'Punten')}
+              </button>
               <label className="flex items-center gap-2 text-sm whitespace-nowrap cursor-pointer">
                 <input
                   type="checkbox"
