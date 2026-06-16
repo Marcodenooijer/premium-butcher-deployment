@@ -155,15 +155,22 @@ function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
             <ExternalLink className="w-4 h-4 text-white/40" />
           )}
         </div>
+        {/* Hardcoded tip of the day */}
+        <div className="text-lg font-semibold text-white line-clamp-2">
+          Ask us to cut your steak to the thickness you want.
+        </div>
+        {/* Existing dynamic tip display - kept for later use */}
+        {/*
         <div className="text-lg font-semibold text-white line-clamp-2">
           {tipOfDay?.title || 'No tips available'}
         </div>
-        {/* Check for both content (DB) and tip (JSON) fields */}
+        {/* Check for both content (DB) and tip (JSON) fields *\/}
         {(tipOfDay?.content || tipOfDay?.tip) && (
           <div className="mt-1 text-white/60 text-sm line-clamp-3">
             {tipOfDay.content || tipOfDay.tip}
           </div>
         )}
+        */}
       </div>
 
       {/* Block 4: Next Event */}
