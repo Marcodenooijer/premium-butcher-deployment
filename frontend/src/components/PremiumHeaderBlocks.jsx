@@ -4,11 +4,12 @@ import {
   Star, Gift, Heart, Calendar, ExternalLink
 } from 'lucide-react'
 import loyaltyApi from "@/services/loyaltyApi.js";
+import { getDailyTip } from '../data/tips'
 
 function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
   const [loyaltyPoints, setLoyaltyPoints] = useState(0)
   const [rewards, setRewards] = useState([])
-  const [tipOfDay, setTipOfDay] = useState(null)
+  const [tipOfDay] = useState(() => getDailyTip())
   const [nextEvent, setNextEvent] = useState(null)
   const [loading, setLoading] = useState(true)
 
@@ -19,7 +20,6 @@ function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
         const results = await Promise.allSettled([
           loyaltyApi.getEnrollments(),
           api.getHeaderRewards(),
-          api.getHeaderTipOfDay(),
           api.getHeaderNextEvent()
         ])
 
@@ -35,28 +35,9 @@ function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
           setRewards(results[1].value || [])
         }
 
-        // Process Tip of the Day - Robust Handling
-        if (results[2].status === 'fulfilled') {
-          const tipData = results[2].value
-          let processedTip = null
-          
-          if (Array.isArray(tipData) && tipData.length > 0) {
-            processedTip = tipData[0]
-          } else if (tipData && typeof tipData === 'object') {
-             if (tipData.data) {
-               processedTip = Array.isArray(tipData.data) ? tipData.data[0] : tipData.data
-             } else {
-               processedTip = tipData
-             }
-          }
-          setTipOfDay(processedTip)
-        } else {
-           console.error('Tip API failed:', results[2].reason)
-        }
-
         // Process Next Event
-        if (results[3].status === 'fulfilled') {
-          setNextEvent(results[3].value)
+        if (results[2].status === 'fulfilled') {
+          setNextEvent(results[2].value)
         }
 
       } catch (error) {
@@ -138,11 +119,11 @@ function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
       </div>
 
       {/* Block 3: Saved Items / Tip */}
-      <div 
+      <div
         onClick={handleTipClick}
         className={`flex-1 min-w-[200px] bg-black/20 backdrop-blur-sm rounded-xl p-6 border border-white/10 transition-all duration-300 ${
           tipLink
-            ? 'hover:bg-black/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]' 
+            ? 'hover:bg-black/30 cursor-pointer hover:scale-[1.02] active:scale-[0.98]'
             : 'hover:bg-black/30'
         }`}
       >
@@ -156,12 +137,11 @@ function PremiumHeaderBlocks({loyaltyProgramEnrollment}) {
           )}
         </div>
         <div className="text-lg font-semibold text-white line-clamp-2">
-          {tipOfDay?.title || 'No tips available'}
+          {tipOfDay?.product_name || 'No tips available'}
         </div>
-        {/* Check for both content (DB) and tip (JSON) fields */}
-        {(tipOfDay?.content || tipOfDay?.tip) && (
+        {tipOfDay?.tip && (
           <div className="mt-1 text-white/60 text-sm line-clamp-3">
-            {tipOfDay.content || tipOfDay.tip}
+            {tipOfDay.tip}
           </div>
         )}
       </div>
