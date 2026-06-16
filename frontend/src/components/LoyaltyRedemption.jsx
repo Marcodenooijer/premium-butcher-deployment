@@ -567,20 +567,21 @@ const LoyaltyRedemption = ({ customerData }) => {
                         <div className="flex items-start justify-between">
                           <h3 className="font-semibold text-gray-900 text-sm">{product.name}</h3>
                           {product?.categories.slice(0, 2).map(category =>
-                              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                              <span key={category} className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
                                 {category}
                               </span>
                           )}
                         </div>
-                        <p className="text-xs text-gray-500 line-clamp-2">
-                          <div dangerouslySetInnerHTML={{ __html: product.description }} />
-                        </p>
+                        <div
+                          className="text-xs text-gray-500 line-clamp-2"
+                          dangerouslySetInnerHTML={{ __html: product.description }}
+                        />
                         {/* Shopify badge */}
                         {product.channel_links && (
                             product.channel_links
                                 .filter(channel_link => channel_link.external_connection_type === 'SHOPIFY')
                                 .map(channel_link =>
-                                    <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                                    <span key={channel_link.channel_id} className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
                                       <a
                                           href={channel_link.product_url}
                                           target="_blank"

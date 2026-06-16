@@ -71,5 +71,12 @@
     "seasonally": "Seizoensgebonden",
     "bbqSkillLevel": "BBQ Vaardigheidsniveau",
     "pitmaster": "Pitmaster"
+  },
+  "loyalty": {
+    "store": {
+      "sortByPoints": "Punten",
+      "sortAsc": "Punten: laag naar hoog",
+      "sortDesc": "Punten: hoog naar laag"
+    }
   }
 }
