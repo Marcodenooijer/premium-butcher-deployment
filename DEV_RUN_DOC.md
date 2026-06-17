@@ -15,7 +15,28 @@ This single env var drives the whole bypass. Vite only exposes vars prefixed
 with `VITE_`, and it reads them as **strings**.
 
 ```env
+# LOCAL DEV ONLY — not committed (.gitignored).
+# Point the frontend at the local backend (running on :3000).
+VITE_API_BASE_URL=http://localhost:3000
+
+# DEV-ONLY: skip the login screen and render the app directly.
 VITE_DEV_BYPASS_AUTH=true
+
+# Firebase Web config — PLACEHOLDERS. The app will load, but LOGIN will not work
+# until you paste the real Firebase web app config (Firebase console > Project
+# settings > Your apps, or pull from Infisical).
+VITE_FIREBASE_API_KEY=REPLACE_ME
+VITE_FIREBASE_AUTH_DOMAIN=local-dev-placeholder.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=local-dev-placeholder
+VITE_FIREBASE_STORAGE_BUCKET=local-dev-placeholder.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+VITE_FIREBASE_APP_ID=1:000000000000:web:0000000000000000000000
+
+# Optional analytics (safe to leave blank locally)
+VITE_PUBLIC_POSTHOG_KEY=
+VITE_PUBLIC_POSTHOG_HOST=
+VITE_FEATURE_FLAG_ETHNICITY=false
+VITE_FEATURE_FLAG_NATIONALITY=false
 ```
 
 The `.env` must live in `frontend/` (Vite's root), not the repo root.
